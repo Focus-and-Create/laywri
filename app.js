@@ -697,14 +697,28 @@ function wrapNakedTextNodes() {
       // naked 텍스트 노드 → 레이어 span으로 감싸기
       node.parentNode.replaceChild(createLayerSpan(state.activeLayerId, node.textContent), node);
     } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'DIV' && !node.classList.contains('layer-text')) {
-      // DIV 요소 → span으로 변환 (리스트는 아님)
-      const text = node.textContent;
-      if (text) {
-        const br = document.createElement('br');
-        const span = createLayerSpan(state.activeLayerId, text);
-        node.parentNode.replaceChild(span, node);
-        span.parentNode.insertBefore(br, span);
-      } else { node.remove(); }
+      if (node.style.textAlign) {
+        // 정렬 DIV — 보존하되 내부 naked 텍스트만 감싸기
+        Array.from(node.childNodes).forEach(child => {
+          if (child.nodeType === Node.TEXT_NODE && child.textContent) {
+            child.parentNode.replaceChild(createLayerSpan(state.activeLayerId, child.textContent), child);
+          }
+        });
+      } else {
+        // 일반 DIV — 자식 노드 추출 (기존 레이어 span 보존)
+        if (node.textContent) {
+          const frag = document.createDocumentFragment();
+          frag.appendChild(document.createElement('br'));
+          Array.from(node.childNodes).forEach(child => {
+            if (child.nodeType === Node.TEXT_NODE && child.textContent) {
+              frag.appendChild(createLayerSpan(state.activeLayerId, child.textContent));
+            } else {
+              frag.appendChild(child.cloneNode(true));
+            }
+          });
+          node.parentNode.replaceChild(frag, node);
+        } else { node.remove(); }
+      }
     }
     // UL, OL 등 리스트 블록 요소는 그대로 유지
   });
@@ -1017,6 +1031,93 @@ editor.addEventListener('beforeinput', e => {
 });
 
 // =============================
+// 한글 IME 조합 처리
+// compositionstart: 다른 레이어 span 안에서 조합 시작 시 분할
+// compositionend: 제로폭 공백 정리
+// =============================
+
+editor.addEventListener('compositionstart', () => {
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  let node = range.startContainer;
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+
+  const inLayerSpan = node.closest('.layer-text');
+  if (!inLayerSpan || inLayerSpan.dataset.layer === state.activeLayerId) return;
+
+  // 다른 레이어 → span 분할 후 활성 레이어 span 삽입
+  const textNode = range.startContainer;
+  const currentLayerId = inLayerSpan.dataset.layer;
+
+  if (textNode.nodeType === Node.TEXT_NODE) {
+    const offset = range.startOffset;
+    const fullText = textNode.textContent;
+    const beforeText = fullText.slice(0, offset);
+    const afterText = fullText.slice(offset);
+
+    // 이후 형제 수집
+    const afterSiblings = [];
+    let sib = textNode.nextSibling;
+    while (sib) { afterSiblings.push(sib); sib = sib.nextSibling; }
+
+    const frag = document.createDocumentFragment();
+    if (beforeText) frag.appendChild(createLayerSpan(currentLayerId, beforeText));
+
+    // 조합용 span (제로폭 공백으로 커서 안착점 확보)
+    const newSpan = createLayerSpan(state.activeLayerId, '\u200B');
+    frag.appendChild(newSpan);
+
+    if (afterText || afterSiblings.length > 0) {
+      const afterSpan = document.createElement('span');
+      afterSpan.className = 'layer-text';
+      afterSpan.dataset.layer = currentLayerId;
+      if (afterText) afterSpan.appendChild(document.createTextNode(afterText));
+      afterSiblings.forEach(s => afterSpan.appendChild(s));
+      frag.appendChild(afterSpan);
+    }
+
+    inLayerSpan.parentNode.replaceChild(frag, inLayerSpan);
+
+    // 커서를 제로폭 공백 앞에 배치 (조합 텍스트가 여기에 삽입됨)
+    const cr = document.createRange();
+    cr.setStart(newSpan.firstChild, 0);
+    cr.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(cr);
+  } else {
+    const newSpan = createLayerSpan(state.activeLayerId, '\u200B');
+    inLayerSpan.parentNode.insertBefore(newSpan, inLayerSpan.nextSibling);
+    const cr = document.createRange();
+    cr.setStart(newSpan.firstChild, 0);
+    cr.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(cr);
+  }
+});
+
+editor.addEventListener('compositionend', () => {
+  // 조합 완료 후 제로폭 공백 정리
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+  let node = sel.getRangeAt(0).startContainer;
+  if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('\u200B') && node.textContent !== '\u200B') {
+    const offset = sel.getRangeAt(0).startOffset;
+    const zwsBefore = (node.textContent.slice(0, offset).match(/\u200B/g) || []).length;
+    node.textContent = node.textContent.replace(/\u200B/g, '');
+    const newRange = document.createRange();
+    newRange.setStart(node, Math.max(0, offset - zwsBefore));
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+  }
+  mergeAdjacentLayers();
+  updateLayerStyles();
+  updateCounts();
+  saveCurrentMemo();
+});
+
+// =============================
 // 붙여넣기
 // =============================
 
@@ -1215,7 +1316,7 @@ layerList.addEventListener('blur', e => {
 layerList.addEventListener('change', e => {
   if (e.target.classList.contains('layer-name')) {
     const l = state.layers.find(l => l.id === e.target.dataset.id); // 레이어 찾기
-    if (l) { 
+    if (l) {
       l.name = e.target.value || '레이어'; // 이름 변경
       e.target.setAttribute('readonly', 'readonly'); // readonly 복원
       saveCurrentMemo(); // 저장
@@ -1223,11 +1324,23 @@ layerList.addEventListener('change', e => {
   }
   if (e.target.classList.contains('layer-color')) {
     const l = state.layers.find(l => l.id === e.target.dataset.id); // 레이어 찾기
-    if (l) { 
+    if (l) {
       l.color = e.target.value; // 색상 변경
       updateLayerStyles(); // 스타일 업데이트
       updateLayerVisibility(); // 가시성 업데이트
       saveCurrentMemo(); // 저장
+    }
+  }
+});
+
+// 색상 피커 드래그 중 실시간 반영 (input 이벤트)
+layerList.addEventListener('input', e => {
+  if (e.target.classList.contains('layer-color')) {
+    const l = state.layers.find(l => l.id === e.target.dataset.id);
+    if (l) {
+      l.color = e.target.value;
+      updateLayerStyles();
+      updateLayerVisibility();
     }
   }
 });
