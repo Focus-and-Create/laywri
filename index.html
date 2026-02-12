@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Layer Writing - 깔끔한 버전</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;500;600&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@300;400;500" rel="stylesheet"/>
+  <link href="styles.css" rel="stylesheet"/>
+</head>
+<body>
+
+  <div class="screen" id="listScreen">
+    <header class="list-header">
+      <div class="list-header-left">
+        <div class="logo-icon"><span class="material-symbols-outlined">layers</span></div>
+        <h1>내 원고 보관함</h1>
+      </div>
+    </header>
+
+    <main class="list-main">
+      <div class="list-container">
+        <div class="memo-grid" id="memoList"></div>
+      </div>
+    </main>
+
+    <div class="fab-container">
+      <button class="fab-btn" id="newMemoFab">
+        <span class="material-symbols-outlined">add</span>
+        <span class="fab-text">새 원고 작성</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="editorScreen">
+    <header class="editor-header">
+      <div class="header-content">
+        <button class="back-btn" id="backBtn"><span class="material-symbols-outlined">arrow_back</span></button>
+        <div class="title-area">
+          <input class="memo-title-input" id="memoTitle" placeholder="제목 없는 원고" type="text"/>
+          <span class="save-status">자동 저장됨</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="editor-main">
+      <div class="editor-wrapper">
+        <div class="editor-canvas">
+          <div class="editor" contenteditable="true" id="editor" data-placeholder="이곳에 이야기를 시작하세요..."></div>
+          <div class="editor-spacer"></div>
+        </div>
+      </div>
+    </main>
+
+    <div class="floating-hud" id="format-toolbar">
+      <button class="toolbar-btn" onclick="document.execCommand('bold')"><span class="material-symbols-outlined">format_bold</span></button>
+      <button class="toolbar-btn" onclick="document.execCommand('italic')"><span class="material-symbols-outlined">format_italic</span></button>
+      <div class="hud-divider"></div>
+      <button class="toolbar-btn" id="undoBtn"><span class="material-symbols-outlined">undo</span></button>
+      <button class="toolbar-btn" id="redoBtn"><span class="material-symbols-outlined">redo</span></button>
+    </div>
+
+    <aside class="layer-panel-glass">
+      <div class="panel-header">
+        <span class="panel-label">레이어 스택</span>
+        <button class="add-layer-mini" id="addLayerBtn"><span class="material-symbols-outlined">add</span></button>
+      </div>
+      <div class="panel-body" id="layerList">
+        </div>
+    </aside>
+
+    <footer class="editor-status">
+      <div class="status-group">
+        <span>글자 수: <b id="charCount">0</b></span>
+        <span>단어 수: <b id="wordCount">0</b></span>
+      </div>
+    </footer>
+  </div>
+
+  <div class="context-menu hidden" id="layerContextMenu"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
