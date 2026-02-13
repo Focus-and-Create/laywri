@@ -17,6 +17,7 @@ const state = {
 
 const history = { undoStack: [], redoStack: [], maxSize: 50 };
 let savedSelection = null;
+let isComposing = false;
 
 // =============================
 // DOM 요소
@@ -1032,89 +1033,77 @@ editor.addEventListener('beforeinput', e => {
 
 // =============================
 // 한글 IME 조합 처리
-// compositionstart: 다른 레이어 span 안에서 조합 시작 시 분할
-// compositionend: 제로폭 공백 정리
+// compositionstart: 조합 중 플래그 설정 (normalizeEditor 방지)
+// compositionend: 조합 완료 후 잘못된 레이어의 텍스트를 올바른 레이어로 이동
 // =============================
 
 editor.addEventListener('compositionstart', () => {
-  const selection = window.getSelection();
-  if (!selection.rangeCount) return;
-  const range = selection.getRangeAt(0);
+  isComposing = true;
+});
+
+editor.addEventListener('compositionend', e => {
+  isComposing = false;
+
+  const sel = window.getSelection();
+  if (!sel.rangeCount) { normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo(); return; }
+  const range = sel.getRangeAt(0);
   let node = range.startContainer;
   if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
 
   const inLayerSpan = node.closest('.layer-text');
-  if (!inLayerSpan || inLayerSpan.dataset.layer === state.activeLayerId) return;
 
-  // 다른 레이어 → span 분할 후 활성 레이어 span 삽입
+  // 같은 레이어이거나 레이어 밖이면 정규화만
+  if (!inLayerSpan || inLayerSpan.dataset.layer === state.activeLayerId) {
+    normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo();
+    return;
+  }
+
+  // 다른 레이어 안에 조합된 텍스트 → 추출하여 활성 레이어로 이동
+  const composedText = e.data;
+  if (!composedText) { normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo(); return; }
+
   const textNode = range.startContainer;
+  if (textNode.nodeType !== Node.TEXT_NODE) { normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo(); return; }
+
+  const cursorOffset = range.startOffset;
+  const fullText = textNode.textContent;
+  const compEnd = cursorOffset;
+  const compStart = compEnd - composedText.length;
+  if (compStart < 0) { normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo(); return; }
+
+  const beforeText = fullText.slice(0, compStart);
+  const afterText = fullText.slice(compEnd);
   const currentLayerId = inLayerSpan.dataset.layer;
 
-  if (textNode.nodeType === Node.TEXT_NODE) {
-    const offset = range.startOffset;
-    const fullText = textNode.textContent;
-    const beforeText = fullText.slice(0, offset);
-    const afterText = fullText.slice(offset);
+  const afterSiblings = [];
+  let sib = textNode.nextSibling;
+  while (sib) { afterSiblings.push(sib); sib = sib.nextSibling; }
 
-    // 이후 형제 수집
-    const afterSiblings = [];
-    let sib = textNode.nextSibling;
-    while (sib) { afterSiblings.push(sib); sib = sib.nextSibling; }
+  const frag = document.createDocumentFragment();
+  if (beforeText) frag.appendChild(createLayerSpan(currentLayerId, beforeText));
 
-    const frag = document.createDocumentFragment();
-    if (beforeText) frag.appendChild(createLayerSpan(currentLayerId, beforeText));
+  const newSpan = createLayerSpan(state.activeLayerId, composedText);
+  frag.appendChild(newSpan);
 
-    // 조합용 span (제로폭 공백으로 커서 안착점 확보)
-    const newSpan = createLayerSpan(state.activeLayerId, '\u200B');
-    frag.appendChild(newSpan);
-
-    if (afterText || afterSiblings.length > 0) {
-      const afterSpan = document.createElement('span');
-      afterSpan.className = 'layer-text';
-      afterSpan.dataset.layer = currentLayerId;
-      if (afterText) afterSpan.appendChild(document.createTextNode(afterText));
-      afterSiblings.forEach(s => afterSpan.appendChild(s));
-      frag.appendChild(afterSpan);
-    }
-
-    inLayerSpan.parentNode.replaceChild(frag, inLayerSpan);
-
-    // 커서를 제로폭 공백 앞에 배치 (조합 텍스트가 여기에 삽입됨)
-    const cr = document.createRange();
-    cr.setStart(newSpan.firstChild, 0);
-    cr.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(cr);
-  } else {
-    const newSpan = createLayerSpan(state.activeLayerId, '\u200B');
-    inLayerSpan.parentNode.insertBefore(newSpan, inLayerSpan.nextSibling);
-    const cr = document.createRange();
-    cr.setStart(newSpan.firstChild, 0);
-    cr.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(cr);
+  if (afterText || afterSiblings.length > 0) {
+    const afterSpan = document.createElement('span');
+    afterSpan.className = 'layer-text';
+    afterSpan.dataset.layer = currentLayerId;
+    if (afterText) afterSpan.appendChild(document.createTextNode(afterText));
+    afterSiblings.forEach(s => afterSpan.appendChild(s));
+    frag.appendChild(afterSpan);
   }
-});
 
-editor.addEventListener('compositionend', () => {
-  // 조합 완료 후 제로폭 공백 정리
-  const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  let node = sel.getRangeAt(0).startContainer;
-  if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('\u200B') && node.textContent !== '\u200B') {
-    const offset = sel.getRangeAt(0).startOffset;
-    const zwsBefore = (node.textContent.slice(0, offset).match(/\u200B/g) || []).length;
-    node.textContent = node.textContent.replace(/\u200B/g, '');
-    const newRange = document.createRange();
-    newRange.setStart(node, Math.max(0, offset - zwsBefore));
-    newRange.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(newRange);
-  }
-  mergeAdjacentLayers();
-  updateLayerStyles();
-  updateCounts();
-  saveCurrentMemo();
+  inLayerSpan.parentNode.replaceChild(frag, inLayerSpan);
+
+  // 커서를 새 span 끝으로
+  const cr = document.createRange();
+  cr.selectNodeContents(newSpan);
+  cr.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(cr);
+
+  normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo();
 });
 
 // =============================
@@ -1357,7 +1346,8 @@ document.querySelectorAll('input[name="displayMode"]').forEach(r => {
 });
 
 editor.addEventListener('input', () => {
-  normalizeEditor(); updateLayerStyles(); updateCounts(); saveCurrentMemo();
+  if (!isComposing) normalizeEditor();  // 조합 중에는 정규화 건너뛰기
+  updateLayerStyles(); updateCounts(); saveCurrentMemo();
 });
 
 // =============================
