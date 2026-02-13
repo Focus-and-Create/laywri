@@ -74,6 +74,7 @@ body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(
 .layer-color-picker::-moz-color-swatch { border: none; border-radius: 3px; }
 .layer-mode-btn { background: none; border: 1px solid #e2e8f0; color: var(--text-muted); cursor: pointer; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
 .layer-mode-btn.text-mode { color: var(--primary); border-color: var(--primary); }
+.layer-mode-btn.none-mode { color: var(--text-muted); border-color: transparent; opacity: 0.5; }
 
 /* 컨텍스트 메뉴 */
 .context-menu { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; padding: 8px 0; min-width: 150px; }

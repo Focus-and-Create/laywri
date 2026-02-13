@@ -6,7 +6,7 @@ const state = {
   memos: [],
   currentMemoId: null,
   layers: [
-    { id: 'layer-0', name: '기본', color: '#94a3b8', visible: true, colorMode: 'highlight' },
+    { id: 'layer-0', name: '기본', color: '#94a3b8', visible: true, colorMode: 'none' },
     { id: 'layer-1', name: '대사', color: '#60a5fa', visible: true, colorMode: 'highlight' },
     { id: 'layer-2', name: '묘사', color: '#f472b6', visible: true, colorMode: 'highlight' }
   ],
@@ -493,10 +493,13 @@ function updateLayerStyles() {
     const b = parseInt(hex.slice(4, 6), 16) || 0;                      // Blue
     if (layer.colorMode === 'highlight') {
       span.style.backgroundColor = `rgba(${r},${g},${b},0.25)`;        // 배경색
-      span.style.color = '#334155';                                     // 글자색 기본
-    } else {
-      span.style.backgroundColor = 'transparent';                       // 배경 투명
+      span.style.color = '';                                            // CSS 기본 글자색
+    } else if (layer.colorMode === 'text') {
+      span.style.backgroundColor = '';                                  // 배경 제거
       span.style.color = layer.color;                                   // 글자색을 레이어색으로
+    } else {
+      span.style.backgroundColor = '';                                  // 없음 모드: 스타일 제거
+      span.style.color = '';                                            // CSS 기본 글자색
     }
   });
 }
@@ -532,8 +535,8 @@ function renderLayers() {
       </button>
       <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}"/>
       <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly/>
-      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} layer-mode" data-id="${layer.id}">
-        ${layer.colorMode==='highlight'?'BG':'TXT'}
+      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''}${layer.colorMode==='none'?' none-mode':''} layer-mode" data-id="${layer.id}">
+        ${layer.colorMode==='highlight'?'BG':layer.colorMode==='text'?'TXT':'OFF'}
       </button>
     </div>`;
   }).join('');
@@ -568,7 +571,9 @@ function toggleLayerVisibility(layerId) {
 function toggleLayerColorMode(layerId) {
   const layer = state.layers.find(l => l.id === layerId);
   if (!layer) return;
-  layer.colorMode = layer.colorMode === 'highlight' ? 'text' : 'highlight';
+  const modes = ['highlight', 'text', 'none'];
+  const idx = modes.indexOf(layer.colorMode);
+  layer.colorMode = modes[(idx + 1) % modes.length];                   // BG → TXT → OFF → BG
   renderLayers(); updateLayerStyles(); saveCurrentMemo();
 }
 
