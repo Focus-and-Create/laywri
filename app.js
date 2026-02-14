@@ -25,6 +25,15 @@ const i18n = {
     defaultLayerName: '기본',
     dialogueLayerName: '대사',
     descriptionLayerName: '묘사',
+    // 카테고리 & 정렬
+    category: '카테고리',
+    allMemos: '전체',
+    addCategory: '추가',
+    newCategoryPrompt: '새 카테고리 이름:',
+    deleteCategoryConfirm: '이 카테고리를 삭제할까요?\n(메모는 삭제되지 않습니다)',
+    sortNewest: '최신순',
+    sortOldest: '오래된순',
+    sortTitle: '이름순',
     // 설정
     settings: '설정',
     language: '언어',
@@ -50,6 +59,14 @@ const i18n = {
     defaultLayerName: 'Default',
     dialogueLayerName: 'Dialogue',
     descriptionLayerName: 'Description',
+    category: 'Category',
+    allMemos: 'All',
+    addCategory: 'Add',
+    newCategoryPrompt: 'New category name:',
+    deleteCategoryConfirm: 'Delete this category?\n(Memos will not be deleted)',
+    sortNewest: 'Newest',
+    sortOldest: 'Oldest',
+    sortTitle: 'By name',
     settings: 'Settings',
     language: 'Language',
     langKo: '한국어',
@@ -78,7 +95,10 @@ const state = {
   ],
   activeLayerId: 'layer-1',
   displayMode: 'keep',
-  defaultColors: ['#94a3b8', '#60a5fa', '#f472b6', '#fbbf24', '#34d399', '#a78bfa']
+  defaultColors: ['#94a3b8', '#60a5fa', '#f472b6', '#fbbf24', '#34d399', '#a78bfa'],
+  categories: [],
+  activeCategory: null,
+  sortOrder: 'newest'
 };
 
 const history = { undoStack: [], redoStack: [], maxSize: 50 };
@@ -127,9 +147,13 @@ const numberListBtn = document.getElementById('numberListBtn');
 const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
 
+// 카테고리 & 정렬 관련 요소
+const categoryList = document.getElementById('categoryList');
+const addCategoryBtn = document.getElementById('addCategoryBtn');
+const sortSelect = document.getElementById('sortSelect');
+
 // 설정 관련 요소
 const settingsBtn = document.getElementById('settingsBtn');
-const settingsBtnEditor = document.getElementById('settingsBtnEditor');
 const settingsModal = document.getElementById('settingsModal');
 const settingsClose = document.getElementById('settingsClose');
 const langSelect = document.getElementById('langSelect');
@@ -465,6 +489,7 @@ function createMemo() {
     id: `memo-${Date.now()}`,
     title: '',
     content: '',
+    category: state.activeCategory || null,
     layers: JSON.parse(JSON.stringify(state.layers)),
     activeLayerId: state.activeLayerId,
     createdAt: Date.now(),
@@ -510,16 +535,29 @@ function deleteMemo(memoId, e) {
   if (!confirm(t('deleteMemoConfirm'))) return;
   state.memos = state.memos.filter(m => m.id !== memoId);
   saveMemos();
+  renderCategories();
   renderMemoList();
 }
 
 function renderMemoList() {
-  if (state.memos.length === 0) {
+  // 카테고리 필터링
+  let filtered = state.activeCategory
+    ? state.memos.filter(m => m.category === state.activeCategory)
+    : state.memos;
+
+  if (filtered.length === 0) {
     memoList.innerHTML = `<div class="empty-state"><span class="material-symbols-outlined">note_stack</span><p>${t('emptyState')}</p></div>`;
     return;
   }
+
+  // 정렬
+  const sorted = [...filtered];
+  if (state.sortOrder === 'newest') sorted.sort((a, b) => b.updatedAt - a.updatedAt);
+  else if (state.sortOrder === 'oldest') sorted.sort((a, b) => a.updatedAt - b.updatedAt);
+  else if (state.sortOrder === 'title') sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+
   const locale = currentLang === 'ko' ? 'ko-KR' : 'en-US';
-  memoList.innerHTML = state.memos.map(memo => {
+  memoList.innerHTML = sorted.map(memo => {
     const preview = memo.content.replace(/<[^>]*>/g, '').slice(0, 100);
     const date = new Date(memo.updatedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
     const c = memo.layers[0]?.color || '#94a3b8';
@@ -1436,6 +1474,87 @@ editor.addEventListener('input', () => {
 });
 
 // =============================
+// 카테고리 관리
+// =============================
+
+function loadCategories() {
+  const s = localStorage.getItem('layerCategories');
+  if (s) state.categories = JSON.parse(s);
+}
+
+function saveCategories() {
+  localStorage.setItem('layerCategories', JSON.stringify(state.categories));
+}
+
+function renderCategories() {
+  const allCount = state.memos.length;
+  let html = `<button class="category-tab ${state.activeCategory === null ? 'active' : ''}" data-cat="__all__">
+    <span class="material-symbols-outlined">folder_open</span>
+    <span>${t('allMemos')}</span>
+    <span class="category-tab-count">${allCount}</span>
+  </button>`;
+
+  state.categories.forEach(cat => {
+    const count = state.memos.filter(m => m.category === cat).length;
+    html += `<button class="category-tab ${state.activeCategory === cat ? 'active' : ''}" data-cat="${cat}">
+      <span class="material-symbols-outlined">folder</span>
+      <span>${cat}</span>
+      <span class="category-tab-count">${count}</span>
+      <button class="category-tab-delete" data-cat="${cat}"><span class="material-symbols-outlined">close</span></button>
+    </button>`;
+  });
+
+  categoryList.innerHTML = html;
+}
+
+function setActiveCategory(cat) {
+  state.activeCategory = cat === '__all__' ? null : cat;
+  renderCategories();
+  renderMemoList();
+}
+
+function addCategory() {
+  const name = prompt(t('newCategoryPrompt'));
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  if (state.categories.includes(trimmed)) return;
+  state.categories.push(trimmed);
+  saveCategories();
+  renderCategories();
+}
+
+function deleteCategory(cat) {
+  if (!confirm(t('deleteCategoryConfirm'))) return;
+  state.categories = state.categories.filter(c => c !== cat);
+  // 해당 카테고리의 메모는 미분류로 변경
+  state.memos.forEach(m => { if (m.category === cat) m.category = null; });
+  saveMemos();
+  saveCategories();
+  if (state.activeCategory === cat) state.activeCategory = null;
+  renderCategories();
+  renderMemoList();
+}
+
+categoryList.addEventListener('click', e => {
+  const delBtn = e.target.closest('.category-tab-delete');
+  if (delBtn) {
+    e.stopPropagation();
+    deleteCategory(delBtn.dataset.cat);
+    return;
+  }
+  const tab = e.target.closest('.category-tab');
+  if (tab) setActiveCategory(tab.dataset.cat);
+});
+
+addCategoryBtn.addEventListener('click', addCategory);
+
+// 정렬
+sortSelect.addEventListener('change', e => {
+  state.sortOrder = e.target.value;
+  renderMemoList();
+});
+
+// =============================
 // 설정 (언어 전환)
 // =============================
 
@@ -1443,6 +1562,16 @@ function updateUILanguage() {
   // 목록 화면
   document.getElementById('appTitle').textContent = t('appTitle');
   document.querySelector('.fab-text').textContent = t('newMemo');
+
+  // 카테고리 사이드바
+  document.getElementById('categoryLabel').textContent = t('category');
+  document.getElementById('addCategoryText').textContent = t('addCategory');
+
+  // 정렬 셀렉트
+  const opts = sortSelect.options;
+  opts[0].textContent = t('sortNewest');
+  opts[1].textContent = t('sortOldest');
+  opts[2].textContent = t('sortTitle');
 
   // 에디터 화면
   memoTitle.placeholder = t('titlePlaceholder');
@@ -1463,6 +1592,7 @@ function updateUILanguage() {
   langSelect.value = currentLang;
 
   // 동적 콘텐츠 재렌더링
+  renderCategories();
   renderMemoList();
   renderLayers();
 }
@@ -1483,7 +1613,6 @@ function closeSettings() {
 }
 
 settingsBtn.addEventListener('click', openSettings);
-settingsBtnEditor.addEventListener('click', openSettings);
 settingsClose.addEventListener('click', closeSettings);
 settingsModal.addEventListener('click', e => {
   if (e.target === settingsModal) closeSettings();
@@ -1498,6 +1627,7 @@ langSelect.addEventListener('change', e => {
 // =============================
 
 loadMemos();
+loadCategories();
 document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
 updateUILanguage();
 showListScreen();

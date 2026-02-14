@@ -20,7 +20,27 @@
     </header>
 
     <main class="list-main">
-      <div class="list-container">
+      <aside class="list-sidebar" id="categorySidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label" id="categoryLabel">카테고리</div>
+          <div class="category-list" id="categoryList"></div>
+          <button class="category-add-btn" id="addCategoryBtn">
+            <span class="material-symbols-outlined">add</span>
+            <span id="addCategoryText">추가</span>
+          </button>
+        </div>
+      </aside>
+      <div class="list-content">
+        <div class="list-toolbar">
+          <div class="sort-group">
+            <span class="material-symbols-outlined sort-icon">sort</span>
+            <select class="sort-select" id="sortSelect">
+              <option value="newest">최신순</option>
+              <option value="oldest">오래된순</option>
+              <option value="title">이름순</option>
+            </select>
+          </div>
+        </div>
         <div class="memo-grid" id="memoList"></div>
       </div>
     </main>
@@ -71,7 +91,6 @@
       <button class="toolbar-btn" id="redoBtn"><span class="material-symbols-outlined">redo</span></button>
       <div class="hud-divider"></div>
       <button class="toolbar-btn" id="layerPanelToggle"><span class="material-symbols-outlined">layers</span></button>
-      <button class="toolbar-btn" id="settingsBtnEditor"><span class="material-symbols-outlined">settings</span></button>
     </div>
 
     <aside class="layer-panel-glass" id="floatingPanel">
