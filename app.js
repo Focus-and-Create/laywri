@@ -1,4 +1,70 @@
 // =============================
+// 다국어 (i18n)
+// =============================
+
+const i18n = {
+  ko: {
+    // 목록 화면
+    appTitle: '내 원고 보관함',
+    newMemo: '새 원고 작성',
+    emptyState: '메모가 없습니다',
+    untitled: '제목 없음',
+    noContent: '내용 없음',
+    deleteMemoConfirm: '이 메모를 삭제할까요?',
+    // 에디터 화면
+    titlePlaceholder: '제목 없는 원고',
+    editorPlaceholder: '이곳에 이야기를 시작하세요...',
+    autoSaved: '자동 저장됨',
+    charCount: '글자 수',
+    wordCount: '단어 수',
+    // 레이어 패널
+    layerStack: '레이어 스택',
+    deleteLayerConfirm: '이 레이어를 삭제할까요?',
+    layerPrefix: '레이어',
+    // 기본 레이어 이름
+    defaultLayerName: '기본',
+    dialogueLayerName: '대사',
+    descriptionLayerName: '묘사',
+    // 설정
+    settings: '설정',
+    language: '언어',
+    langKo: '한국어',
+    langEn: 'English',
+    close: '닫기'
+  },
+  en: {
+    appTitle: 'My Manuscripts',
+    newMemo: 'New Manuscript',
+    emptyState: 'No memos yet',
+    untitled: 'Untitled',
+    noContent: 'No content',
+    deleteMemoConfirm: 'Delete this memo?',
+    titlePlaceholder: 'Untitled manuscript',
+    editorPlaceholder: 'Start your story here...',
+    autoSaved: 'Auto saved',
+    charCount: 'Characters',
+    wordCount: 'Words',
+    layerStack: 'Layer Stack',
+    deleteLayerConfirm: 'Delete this layer?',
+    layerPrefix: 'Layer',
+    defaultLayerName: 'Default',
+    dialogueLayerName: 'Dialogue',
+    descriptionLayerName: 'Description',
+    settings: 'Settings',
+    language: 'Language',
+    langKo: '한국어',
+    langEn: 'English',
+    close: 'Close'
+  }
+};
+
+let currentLang = localStorage.getItem('layerLang') || 'ko';
+
+function t(key) {
+  return (i18n[currentLang] && i18n[currentLang][key]) || i18n.ko[key] || key;
+}
+
+// =============================
 // 상태 관리
 // =============================
 
@@ -58,6 +124,15 @@ const alignRightBtn = document.getElementById('alignRightBtn');
 const alignJustifyBtn = document.getElementById('alignJustifyBtn');
 const bulletListBtn = document.getElementById('bulletListBtn');
 const numberListBtn = document.getElementById('numberListBtn');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+
+// 설정 관련 요소
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsBtnEditor = document.getElementById('settingsBtnEditor');
+const settingsModal = document.getElementById('settingsModal');
+const settingsClose = document.getElementById('settingsClose');
+const langSelect = document.getElementById('langSelect');
 
 // =============================
 // 서식 툴바 기능
@@ -273,6 +348,8 @@ alignRightBtn.addEventListener('click', () => applyFormat('justifyRight')); // �
 alignJustifyBtn.addEventListener('click', () => applyFormat('justifyFull')); // 양쪽 정렬
 bulletListBtn.addEventListener('click', () => applyFormat('insertUnorderedList')); // 글머리 기호
 numberListBtn.addEventListener('click', () => applyFormat('insertOrderedList')); // 번호 매기기
+undoBtn.addEventListener('click', () => { undo(); focusEditor(); }); // 실행 취소
+redoBtn.addEventListener('click', () => { redo(); focusEditor(); }); // 다시 실행
 
 // 에디터 선택 변경 시 버튼 상태 업데이트
 editor.addEventListener('mouseup', updateFormatButtons);
@@ -430,7 +507,7 @@ function saveCurrentMemo() {
 
 function deleteMemo(memoId, e) {
   e.stopPropagation();
-  if (!confirm('이 메모를 삭제할까요?')) return;
+  if (!confirm(t('deleteMemoConfirm'))) return;
   state.memos = state.memos.filter(m => m.id !== memoId);
   saveMemos();
   renderMemoList();
@@ -438,14 +515,15 @@ function deleteMemo(memoId, e) {
 
 function renderMemoList() {
   if (state.memos.length === 0) {
-    memoList.innerHTML = `<div class="empty-state"><span class="material-symbols-outlined">note_stack</span><p>메모가 없습니다</p></div>`;
+    memoList.innerHTML = `<div class="empty-state"><span class="material-symbols-outlined">note_stack</span><p>${t('emptyState')}</p></div>`;
     return;
   }
+  const locale = currentLang === 'ko' ? 'ko-KR' : 'en-US';
   memoList.innerHTML = state.memos.map(memo => {
     const preview = memo.content.replace(/<[^>]*>/g, '').slice(0, 100);
-    const date = new Date(memo.updatedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
+    const date = new Date(memo.updatedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
     const c = memo.layers[0]?.color || '#94a3b8';
-    return `<div class="memo-card" data-id="${memo.id}"><div class="memo-card-indicator" style="background:${c}"></div><div class="memo-card-body"><div class="memo-card-header"><h3 class="memo-card-title">${memo.title||'제목 없음'}</h3><button class="memo-card-delete" data-id="${memo.id}"><span class="material-symbols-outlined">delete</span></button></div><p class="memo-card-preview">${preview||'내용 없음'}</p><div class="memo-card-footer"><span class="memo-card-date">${date}</span><span class="memo-card-dot" style="background:${c}"></span></div></div></div>`;
+    return `<div class="memo-card" data-id="${memo.id}"><div class="memo-card-indicator" style="background:${c}"></div><div class="memo-card-body"><div class="memo-card-header"><h3 class="memo-card-title">${memo.title||t('untitled')}</h3><button class="memo-card-delete" data-id="${memo.id}"><span class="material-symbols-outlined">delete</span></button></div><p class="memo-card-preview">${preview||t('noContent')}</p><div class="memo-card-footer"><span class="memo-card-date">${date}</span><span class="memo-card-dot" style="background:${c}"></span></div></div></div>`;
   }).join('');
 }
 
@@ -494,9 +572,13 @@ function updateLayerStyles() {
     if (layer.colorMode === 'highlight') {
       span.style.backgroundColor = `rgba(${r},${g},${b},0.25)`;        // 배경색
       span.style.color = '#334155';                                     // 글자색 기본
-    } else {
+    } else if (layer.colorMode === 'text') {
       span.style.backgroundColor = 'transparent';                       // 배경 투명
       span.style.color = layer.color;                                   // 글자색을 레이어색으로
+    } else {
+      // OFF 모드: 색상 표시 없음
+      span.style.backgroundColor = 'transparent';
+      span.style.color = '#334155';
     }
   });
 }
@@ -532,8 +614,8 @@ function renderLayers() {
       </button>
       <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}"/>
       <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly/>
-      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} layer-mode" data-id="${layer.id}">
-        ${layer.colorMode==='highlight'?'BG':'TXT'}
+      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} ${layer.colorMode==='off'?'off-mode':''} layer-mode" data-id="${layer.id}">
+        ${layer.colorMode==='highlight'?'BG':layer.colorMode==='text'?'TXT':'OFF'}
       </button>
     </div>`;
   }).join('');
@@ -541,7 +623,7 @@ function renderLayers() {
 
 function addLayer() {
   const ci = state.layers.length % state.defaultColors.length;         // 색상 순환 인덱스
-  const nl = { id: `layer-${Date.now()}`, name: `레이어 ${state.layers.length+1}`, color: state.defaultColors[ci], visible: true, colorMode: 'highlight' };
+  const nl = { id: `layer-${Date.now()}`, name: `${t('layerPrefix')} ${state.layers.length+1}`, color: state.defaultColors[ci], visible: true, colorMode: 'highlight' };
   state.layers.push(nl);
   state.activeLayerId = nl.id;
   renderLayers(); saveCurrentMemo();
@@ -568,7 +650,10 @@ function toggleLayerVisibility(layerId) {
 function toggleLayerColorMode(layerId) {
   const layer = state.layers.find(l => l.id === layerId);
   if (!layer) return;
-  layer.colorMode = layer.colorMode === 'highlight' ? 'text' : 'highlight';
+  // 3종 순환: highlight → text → off → highlight
+  if (layer.colorMode === 'highlight') layer.colorMode = 'text';
+  else if (layer.colorMode === 'text') layer.colorMode = 'off';
+  else layer.colorMode = 'highlight';
   renderLayers(); updateLayerStyles(); saveCurrentMemo();
 }
 
@@ -1306,7 +1391,7 @@ layerList.addEventListener('change', e => {
   if (e.target.classList.contains('layer-name')) {
     const l = state.layers.find(l => l.id === e.target.dataset.id); // 레이어 찾기
     if (l) {
-      l.name = e.target.value || '레이어'; // 이름 변경
+      l.name = e.target.value || t('layerPrefix'); // 이름 변경
       e.target.setAttribute('readonly', 'readonly'); // readonly 복원
       saveCurrentMemo(); // 저장
     }
@@ -1336,7 +1421,7 @@ layerList.addEventListener('input', e => {
 
 layerList.addEventListener('contextmenu', e => {
   const item = e.target.closest('.layer-item');
-  if (item) { e.preventDefault(); if (state.layers.length > 1 && confirm('이 레이어를 삭제할까요?')) deleteLayer(item.dataset.id); }
+  if (item) { e.preventDefault(); if (state.layers.length > 1 && confirm(t('deleteLayerConfirm'))) deleteLayer(item.dataset.id); }
 });
 
 addLayerBtn.addEventListener('click', addLayer);
@@ -1351,9 +1436,68 @@ editor.addEventListener('input', () => {
 });
 
 // =============================
+// 설정 (언어 전환)
+// =============================
+
+function updateUILanguage() {
+  // 목록 화면
+  document.getElementById('appTitle').textContent = t('appTitle');
+  document.querySelector('.fab-text').textContent = t('newMemo');
+
+  // 에디터 화면
+  memoTitle.placeholder = t('titlePlaceholder');
+  editor.dataset.placeholder = t('editorPlaceholder');
+  saveStatus.textContent = t('autoSaved');
+  document.querySelector('.panel-label').textContent = t('layerStack');
+
+  // 상태바
+  document.getElementById('charLabel').textContent = t('charCount') + ': ';
+  document.getElementById('wordLabel').textContent = t('wordCount') + ': ';
+
+  // 설정 모달
+  document.getElementById('settingsTitle').textContent = t('settings');
+  document.getElementById('langLabel').textContent = t('language');
+  settingsClose.querySelector('span').textContent = t('close');
+
+  // 언어 선택 업데이트
+  langSelect.value = currentLang;
+
+  // 동적 콘텐츠 재렌더링
+  renderMemoList();
+  renderLayers();
+}
+
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('layerLang', lang);
+  document.documentElement.lang = lang === 'ko' ? 'ko' : 'en';
+  updateUILanguage();
+}
+
+function openSettings() {
+  settingsModal.classList.remove('hidden');
+}
+
+function closeSettings() {
+  settingsModal.classList.add('hidden');
+}
+
+settingsBtn.addEventListener('click', openSettings);
+settingsBtnEditor.addEventListener('click', openSettings);
+settingsClose.addEventListener('click', closeSettings);
+settingsModal.addEventListener('click', e => {
+  if (e.target === settingsModal) closeSettings();
+});
+
+langSelect.addEventListener('change', e => {
+  setLanguage(e.target.value);
+});
+
+// =============================
 // 초기화
 // =============================
 
 loadMemos();
-renderMemoList();
+document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
+updateUILanguage();
 showListScreen();
