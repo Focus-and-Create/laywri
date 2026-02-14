@@ -14,8 +14,9 @@
     <header class="list-header">
       <div class="list-header-left">
         <div class="logo-icon"><span class="material-symbols-outlined">layers</span></div>
-        <h1>내 원고 보관함</h1>
+        <h1 id="appTitle">내 원고 보관함</h1>
       </div>
+      <button class="settings-btn" id="settingsBtn"><span class="material-symbols-outlined">settings</span></button>
     </header>
 
     <main class="list-main">
@@ -70,6 +71,7 @@
       <button class="toolbar-btn" id="redoBtn"><span class="material-symbols-outlined">redo</span></button>
       <div class="hud-divider"></div>
       <button class="toolbar-btn" id="layerPanelToggle"><span class="material-symbols-outlined">layers</span></button>
+      <button class="toolbar-btn" id="settingsBtnEditor"><span class="material-symbols-outlined">settings</span></button>
     </div>
 
     <aside class="layer-panel-glass" id="floatingPanel">
@@ -84,14 +86,28 @@
 
     <footer class="editor-status">
       <div class="status-group">
-        <span>글자 수: <b id="charCount">0</b></span>
-        <span>단어 수: <b id="wordCount">0</b></span>
+        <span><span id="charLabel">글자 수: </span><b id="charCount">0</b></span>
+        <span><span id="wordLabel">단어 수: </span><b id="wordCount">0</b></span>
       </div>
     </footer>
   </div>
 
   <div class="context-menu hidden" id="layerContextMenu">
     <div id="contextMenuItems"></div>
+  </div>
+
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-content">
+      <h2 id="settingsTitle">설정</h2>
+      <div class="settings-row">
+        <label id="langLabel">언어</label>
+        <select id="langSelect">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <button class="modal-close-btn" id="settingsClose"><span>닫기</span></button>
+    </div>
   </div>
 
   <script src="app.js"></script>
