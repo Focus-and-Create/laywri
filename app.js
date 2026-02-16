@@ -657,11 +657,13 @@ function renderLayers() {
     const isActive = layer.id === state.activeLayerId; // 활성 레이어 여부
     // 레이어 이름 input은 readonly로 설정
     const nameTitle = currentLang === 'ko' ? '더블클릭하여 이름 편집' : 'Double-click to edit name';
+    const colorTitle = currentLang === 'ko' ? '클릭하여 색상 변경' : 'Click to change color';
     return `<div class="layer-item ${isActive?'active':''}" data-id="${layer.id}">
       <button class="layer-toggle ${!layer.visible?'hidden-layer':''}" data-id="${layer.id}">
         <span class="material-symbols-outlined">${layer.visible?'visibility':'visibility_off'}</span>
       </button>
-      <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 변경' : 'Change color'}"/>
+      <button class="layer-color-chip" data-id="${layer.id}" style="background-color: ${layer.color};" title="${colorTitle}"></button>
+      <input type="color" class="layer-color-picker-hidden" value="${layer.color}" data-id="${layer.id}"/>
       <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly title="${nameTitle}"/>
       <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} ${layer.colorMode==='off'?'off-mode':''} layer-mode" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 모드 전환 (배경/글자/끄기)' : 'Toggle color mode (BG/Text/Off)'}">
         ${layer.colorMode==='highlight'?'BG':layer.colorMode==='text'?'TXT':'OFF'}
@@ -1354,33 +1356,40 @@ editor.addEventListener('blur', () => {
 
 layerList.addEventListener('mousedown', e => {
   const toggle = e.target.closest('.layer-toggle'); // 토글 버튼
-  const color = e.target.closest('.layer-color'); // 색상 선택
+  const colorChip = e.target.closest('.layer-color-chip'); // 컬러칩 버튼
   const mode = e.target.closest('.layer-mode'); // 모드 버튼
   const name = e.target.closest('.layer-name'); // 이름 입력
   const item = e.target.closest('.layer-item'); // 레이어 항목
-  
-  if (toggle) { 
-    e.preventDefault(); 
+
+  if (toggle) {
+    e.preventDefault();
     toggleLayerVisibility(toggle.dataset.id); // 가시성 토글
-    return; 
+    return;
   }
-  if (mode) { 
-    e.preventDefault(); 
+  if (colorChip) {
+    e.preventDefault();
+    // 숨겨진 color picker 찾아서 클릭
+    const layerId = colorChip.dataset.id;
+    const picker = document.querySelector(`.layer-color-picker-hidden[data-id="${layerId}"]`);
+    if (picker) picker.click();
+    return;
+  }
+  if (mode) {
+    e.preventDefault();
     toggleLayerColorMode(mode.dataset.id); // 색상 모드 토글
-    return; 
+    return;
   }
-  if (color) return; // 색상 선택은 클릭 무시
   // readonly 상태의 이름 클릭은 레이어 전환으로 동작 (편집 모드가 아닐 때)
   if (name && name.hasAttribute('readonly')) {
     // readonly이면 레이어 전환 처리로 통과시킴 (아래 item 로직에서 처리)
   } else if (name) {
     return; // 편집 모드(readonly 아닌 상태)에서는 클릭 무시
   }
-  
+
   if (item) {
     e.preventDefault(); // 기본 동작 방지
     const lid = item.dataset.id; // 레이어 ID
-    
+
     // 저장된 선택 영역이 있으면 사용
     if (editorSelection) {
       try {
@@ -1388,10 +1397,10 @@ layerList.addEventListener('mousedown', e => {
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(editorSelection.cloneRange());
-        
+
         // 레이어 적용
         applyLayerToRange(lid, editorSelection.cloneRange());
-        
+
         // 선택 영역 유지
         sel.removeAllRanges();
         sel.addRange(editorSelection.cloneRange());
@@ -1399,11 +1408,11 @@ layerList.addEventListener('mousedown', e => {
         console.log('Selection error:', e);
       }
     }
-    
+
     state.activeLayerId = lid; // 활성 레이어 변경
-    renderLayers(); 
+    renderLayers();
     saveCurrentMemo();
-    
+
     // 에디터에 포커스 복원
     setTimeout(() => {
       editor.focus();
@@ -1445,10 +1454,11 @@ layerList.addEventListener('change', e => {
       saveCurrentMemo(); // 저장
     }
   }
-  if (e.target.classList.contains('layer-color')) {
+  if (e.target.classList.contains('layer-color-picker-hidden')) {
     const l = state.layers.find(l => l.id === e.target.dataset.id); // 레이어 찾기
     if (l) {
       l.color = e.target.value; // 색상 변경
+      renderLayers(); // 레이어 다시 렌더링 (컬러칩 색상 업데이트)
       updateLayerStyles(); // 스타일 업데이트
       updateLayerVisibility(); // 가시성 업데이트
       saveCurrentMemo(); // 저장
@@ -1458,10 +1468,13 @@ layerList.addEventListener('change', e => {
 
 // 색상 피커 드래그 중 실시간 반영 (input 이벤트)
 layerList.addEventListener('input', e => {
-  if (e.target.classList.contains('layer-color')) {
+  if (e.target.classList.contains('layer-color-picker-hidden')) {
     const l = state.layers.find(l => l.id === e.target.dataset.id);
     if (l) {
       l.color = e.target.value;
+      // 컬러칩 색상 즉시 업데이트
+      const chip = document.querySelector(`.layer-color-chip[data-id="${l.id}"]`);
+      if (chip) chip.style.backgroundColor = e.target.value;
       updateLayerStyles();
       updateLayerVisibility();
     }
