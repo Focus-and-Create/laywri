@@ -98,7 +98,8 @@ const state = {
   defaultColors: ['#94a3b8', '#60a5fa', '#f472b6', '#fbbf24', '#34d399', '#a78bfa'],
   categories: [],
   activeCategory: null,
-  sortOrder: 'newest'
+  sortOrder: 'newest',
+  viewMode: 'card'
 };
 
 const history = { undoStack: [], redoStack: [], maxSize: 50 };
@@ -151,6 +152,8 @@ const redoBtn = document.getElementById('redoBtn');
 const categoryList = document.getElementById('categoryList');
 const addCategoryBtn = document.getElementById('addCategoryBtn');
 const sortSelect = document.getElementById('sortSelect');
+const cardViewBtn = document.getElementById('cardViewBtn');
+const listViewBtn = document.getElementById('listViewBtn');
 
 // 설정 관련 요소
 const settingsBtn = document.getElementById('settingsBtn');
@@ -540,6 +543,13 @@ function deleteMemo(memoId, e) {
 }
 
 function renderMemoList() {
+  // 뷰 모드에 따라 클래스 적용
+  if (state.viewMode === 'list') {
+    memoList.classList.add('list-view');
+  } else {
+    memoList.classList.remove('list-view');
+  }
+
   // 카테고리 필터링
   let filtered = state.activeCategory
     ? state.memos.filter(m => m.category === state.activeCategory)
@@ -646,13 +656,14 @@ function renderLayers() {
   layerList.innerHTML = state.layers.map(layer => {
     const isActive = layer.id === state.activeLayerId; // 활성 레이어 여부
     // 레이어 이름 input은 readonly로 설정
+    const nameTitle = currentLang === 'ko' ? '더블클릭하여 이름 편집' : 'Double-click to edit name';
     return `<div class="layer-item ${isActive?'active':''}" data-id="${layer.id}">
       <button class="layer-toggle ${!layer.visible?'hidden-layer':''}" data-id="${layer.id}">
         <span class="material-symbols-outlined">${layer.visible?'visibility':'visibility_off'}</span>
       </button>
-      <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}"/>
-      <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly/>
-      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} ${layer.colorMode==='off'?'off-mode':''} layer-mode" data-id="${layer.id}">
+      <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 변경' : 'Change color'}"/>
+      <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly title="${nameTitle}"/>
+      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} ${layer.colorMode==='off'?'off-mode':''} layer-mode" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 모드 전환 (배경/글자/끄기)' : 'Toggle color mode (BG/Text/Off)'}">
         ${layer.colorMode==='highlight'?'BG':layer.colorMode==='text'?'TXT':'OFF'}
       </button>
     </div>`;
@@ -1551,6 +1562,21 @@ addCategoryBtn.addEventListener('click', addCategory);
 // 정렬
 sortSelect.addEventListener('change', e => {
   state.sortOrder = e.target.value;
+  renderMemoList();
+});
+
+// 뷰 전환
+cardViewBtn.addEventListener('click', () => {
+  state.viewMode = 'card';
+  cardViewBtn.classList.add('active');
+  listViewBtn.classList.remove('active');
+  renderMemoList();
+});
+
+listViewBtn.addEventListener('click', () => {
+  state.viewMode = 'list';
+  listViewBtn.classList.add('active');
+  cardViewBtn.classList.remove('active');
   renderMemoList();
 });
 
