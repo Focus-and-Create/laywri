@@ -114,18 +114,26 @@ body { font-family: 'Inter', sans-serif; background: var(--bg-main); color: var(
 /* 하단 상태바 */
 .editor-status { position: fixed; bottom: 15px; left: 30px; font-size: 11px; color: var(--text-muted); z-index: 100; }
 
-/* 레이어 토글/색상/모드 버튼 */
+/* 레이어 토글/색상 스와치 버튼 */
 .layer-toggle { background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; padding: 2px; }
 .layer-toggle:hover { color: var(--primary); }
 .hidden-layer { opacity: 0.4; }
-.layer-color-picker { -webkit-appearance: none; -moz-appearance: none; appearance: none; width: 32px; height: 32px; border: 2px solid #fff; padding: 0; cursor: pointer; border-radius: 8px; background: none; box-shadow: 0 0 0 1px #e2e8f0, 0 2px 4px rgba(0,0,0,0.08); transition: 0.2s; }
-.layer-color-picker:hover { box-shadow: 0 0 0 2px var(--primary), 0 2px 6px rgba(19, 91, 236, 0.2); }
-.layer-color-picker::-webkit-color-swatch-wrapper { padding: 0; border-radius: 6px; }
-.layer-color-picker::-webkit-color-swatch { border: none; border-radius: 6px; }
-.layer-color-picker::-moz-color-swatch { border: none; border-radius: 6px; }
-.layer-mode-btn { background: none; border: 1px solid #e2e8f0; color: var(--text-muted); cursor: pointer; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
-.layer-mode-btn.text-mode { color: var(--primary); border-color: var(--primary); }
-.layer-mode-btn.off-mode { color: #94a3b8; border-color: #cbd5e1; opacity: 0.6; }
+.layer-color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,0.13); cursor: pointer; flex-shrink: 0; transition: transform 0.15s, box-shadow 0.15s; padding: 0; }
+.layer-color-swatch:hover { transform: scale(1.18); box-shadow: 0 0 0 2px var(--primary); }
+
+/* 레이어 색상/모드 팝업 */
+.layer-color-popup { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.13); padding: 14px; z-index: 600; display: flex; flex-direction: column; gap: 10px; min-width: 190px; }
+.popup-color-row { display: flex; align-items: center; gap: 10px; }
+.popup-color-picker-wrap { position: relative; width: 38px; height: 38px; flex-shrink: 0; }
+.popup-color-preview { width: 38px; height: 38px; border-radius: 10px; border: 2px solid #e2e8f0; box-shadow: 0 2px 6px rgba(0,0,0,0.09); cursor: pointer; transition: border-color 0.15s; }
+.popup-color-picker-wrap:hover .popup-color-preview { border-color: var(--primary); }
+#popupColorPicker { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.popup-color-label { font-size: 13px; font-weight: 700; color: var(--text-main); }
+.popup-mode-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.popup-mode-btns { display: flex; gap: 5px; }
+.popup-mode-btn { flex: 1; padding: 7px 2px; border: 1.5px solid #e2e8f0; border-radius: 8px; background: none; font-size: 11px; font-weight: 700; color: var(--text-muted); cursor: pointer; transition: 0.15s; font-family: 'Inter', sans-serif; }
+.popup-mode-btn.active { border-color: var(--primary); color: var(--primary); background: rgba(19,91,236,0.07); }
+.popup-mode-btn:hover:not(.active) { border-color: #cbd5e1; color: var(--text-main); }
 
 /* 컨텍스트 메뉴 */
 .context-menu { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; padding: 8px 0; min-width: 150px; }

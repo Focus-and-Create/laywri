@@ -692,6 +692,7 @@ function updateLayerVisibility() {
 // =============================
 
 function renderLayers() {
+  if (typeof closeColorPopup === 'function') closeColorPopup();
   layerList.innerHTML = state.layers.map(layer => {
     const isActive = layer.id === state.activeLayerId; // 활성 레이어 여부
     // 레이어 이름 input은 readonly로 설정
@@ -700,11 +701,8 @@ function renderLayers() {
       <button class="layer-toggle ${!layer.visible?'hidden-layer':''}" data-id="${layer.id}">
         <span class="material-symbols-outlined">${layer.visible?'visibility':'visibility_off'}</span>
       </button>
-      <input type="color" class="layer-color layer-color-picker" value="${layer.color}" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 변경' : 'Change color'}"/>
+      <button class="layer-color-swatch" style="background:${layer.color}" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 및 표시 방식 변경' : 'Change color & mode'}"></button>
       <input type="text" class="layer-name" value="${layer.name}" data-id="${layer.id}" readonly title="${nameTitle}"/>
-      <button class="layer-mode-btn ${layer.colorMode==='text'?'text-mode':''} ${layer.colorMode==='off'?'off-mode':''} layer-mode" data-id="${layer.id}" title="${currentLang === 'ko' ? '색상 모드 전환 (배경/글자/끄기)' : 'Toggle color mode (BG/Text/Off)'}">
-        ${layer.colorMode==='highlight'?'BG':layer.colorMode==='text'?'TXT':'OFF'}
-      </button>
     </div>`;
   }).join('');
 }
@@ -1394,22 +1392,20 @@ editor.addEventListener('blur', () => {
 
 layerList.addEventListener('mousedown', e => {
   const toggle = e.target.closest('.layer-toggle'); // 토글 버튼
-  const color = e.target.closest('.layer-color'); // 색상 선택
-  const mode = e.target.closest('.layer-mode'); // 모드 버튼
+  const swatch = e.target.closest('.layer-color-swatch'); // 색상 스와치
   const name = e.target.closest('.layer-name'); // 이름 입력
   const item = e.target.closest('.layer-item'); // 레이어 항목
-  
-  if (toggle) { 
-    e.preventDefault(); 
+
+  if (toggle) {
+    e.preventDefault();
     toggleLayerVisibility(toggle.dataset.id); // 가시성 토글
-    return; 
+    return;
   }
-  if (mode) { 
-    e.preventDefault(); 
-    toggleLayerColorMode(mode.dataset.id); // 색상 모드 토글
-    return; 
+  if (swatch) {
+    e.preventDefault();
+    openColorPopup(swatch.dataset.id, swatch); // 색상 팝업 열기
+    return;
   }
-  if (color) return; // 색상 선택은 클릭 무시
   // readonly 상태의 이름 클릭은 레이어 전환으로 동작 (편집 모드가 아닐 때)
   if (name && name.hasAttribute('readonly')) {
     // readonly이면 레이어 전환 처리로 통과시킴 (아래 item 로직에서 처리)
@@ -1483,27 +1479,6 @@ layerList.addEventListener('change', e => {
       l.name = e.target.value || t('layerPrefix'); // 이름 변경
       e.target.setAttribute('readonly', 'readonly'); // readonly 복원
       saveCurrentMemo(); // 저장
-    }
-  }
-  if (e.target.classList.contains('layer-color')) {
-    const l = state.layers.find(l => l.id === e.target.dataset.id); // 레이어 찾기
-    if (l) {
-      l.color = e.target.value; // 색상 변경
-      updateLayerStyles(); // 스타일 업데이트
-      updateLayerVisibility(); // 가시성 업데이트
-      saveCurrentMemo(); // 저장
-    }
-  }
-});
-
-// 색상 피커 드래그 중 실시간 반영 (input 이벤트)
-layerList.addEventListener('input', e => {
-  if (e.target.classList.contains('layer-color')) {
-    const l = state.layers.find(l => l.id === e.target.dataset.id);
-    if (l) {
-      l.color = e.target.value;
-      updateLayerStyles();
-      updateLayerVisibility();
     }
   }
 });
@@ -1689,6 +1664,96 @@ settingsModal.addEventListener('click', e => {
 
 langSelect.addEventListener('change', e => {
   setLanguage(e.target.value);
+});
+
+// =============================
+// 레이어 색상/모드 팝업
+// =============================
+
+let popupLayerId = null;
+
+const layerColorPopup = document.getElementById('layerColorPopup');
+const popupColorPicker = document.getElementById('popupColorPicker');
+const popupColorPreview = document.getElementById('popupColorPreview');
+const popupColorLabel = document.getElementById('popupColorLabel');
+const popupModeLabel = document.getElementById('popupModeLabel');
+
+function openColorPopup(layerId, swatchEl) {
+  popupLayerId = layerId;
+  const layer = state.layers.find(l => l.id === layerId);
+  if (!layer) return;
+
+  // 색상 초기화
+  popupColorPicker.value = layer.color;
+  popupColorPreview.style.background = layer.color;
+  popupColorLabel.textContent = currentLang === 'ko' ? '색상' : 'Color';
+  popupModeLabel.textContent = currentLang === 'ko' ? '표시 방식' : 'Display mode';
+
+  // 모드 버튼 활성화
+  document.querySelectorAll('.popup-mode-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === layer.colorMode);
+    btn.textContent = currentLang === 'ko'
+      ? (btn.dataset.mode === 'highlight' ? '배경색' : btn.dataset.mode === 'text' ? '글자색' : '끄기')
+      : (btn.dataset.mode === 'highlight' ? 'Background' : btn.dataset.mode === 'text' ? 'Text' : 'Off');
+  });
+
+  // 팝업 위치: 스와치 아래/왼쪽 정렬
+  const rect = swatchEl.getBoundingClientRect();
+  layerColorPopup.classList.remove('hidden');
+  const pw = layerColorPopup.offsetWidth;
+  const ph = layerColorPopup.offsetHeight;
+  let left = rect.left;
+  let top = rect.bottom + 6;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  if (top + ph > window.innerHeight - 8) top = rect.top - ph - 6;
+  layerColorPopup.style.left = left + 'px';
+  layerColorPopup.style.top = top + 'px';
+}
+
+function closeColorPopup() {
+  layerColorPopup.classList.add('hidden');
+  popupLayerId = null;
+}
+
+// 색상 피커 실시간 반영
+popupColorPicker.addEventListener('input', () => {
+  if (!popupLayerId) return;
+  const layer = state.layers.find(l => l.id === popupLayerId);
+  if (!layer) return;
+  layer.color = popupColorPicker.value;
+  popupColorPreview.style.background = popupColorPicker.value;
+  // 스와치 버튼 색상 즉시 반영
+  const swatch = layerList.querySelector(`.layer-color-swatch[data-id="${popupLayerId}"]`);
+  if (swatch) swatch.style.background = popupColorPicker.value;
+  updateLayerStyles();
+  updateLayerVisibility();
+});
+
+// 색상 변경 완료 시 저장
+popupColorPicker.addEventListener('change', () => {
+  if (popupLayerId) saveCurrentMemo();
+});
+
+// 모드 버튼 클릭
+layerColorPopup.addEventListener('click', e => {
+  const btn = e.target.closest('.popup-mode-btn');
+  if (!btn || !popupLayerId) return;
+  const layer = state.layers.find(l => l.id === popupLayerId);
+  if (!layer) return;
+  layer.colorMode = btn.dataset.mode;
+  document.querySelectorAll('.popup-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+  updateLayerStyles();
+  updateLayerVisibility();
+  saveCurrentMemo();
+});
+
+// 팝업 외부 클릭 시 닫기
+document.addEventListener('mousedown', e => {
+  if (!layerColorPopup.classList.contains('hidden') &&
+      !layerColorPopup.contains(e.target) &&
+      !e.target.closest('.layer-color-swatch')) {
+    closeColorPopup();
+  }
 });
 
 // =============================
