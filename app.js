@@ -39,7 +39,26 @@ const i18n = {
     language: '언어',
     langKo: '한국어',
     langEn: 'English',
-    close: '닫기'
+    close: '닫기',
+    // 로그인
+    loginId: '아이디',
+    loginPw: '비밀번호',
+    loginBtn: '로그인',
+    loginIdPlaceholder: '아이디를 입력하세요',
+    loginPwPlaceholder: '비밀번호를 입력하세요',
+    registerNewId: '새 아이디',
+    registerPw: '비밀번호',
+    registerPwConfirm: '비밀번호 확인',
+    registerBtn: '계정 만들기',
+    toggleToRegister: '계정이 없으신가요? 회원가입',
+    toggleToLogin: '이미 계정이 있으신가요? 로그인',
+    errLoginEmpty: '아이디와 비밀번호를 입력하세요.',
+    errLoginFail: '아이디 또는 비밀번호가 올바르지 않습니다.',
+    errRegisterShortId: '아이디는 2자 이상이어야 합니다.',
+    errRegisterShortPw: '비밀번호는 6자 이상이어야 합니다.',
+    errRegisterPwMismatch: '비밀번호가 일치하지 않습니다.',
+    errRegisterDupId: '이미 사용 중인 아이디입니다.',
+    logoutConfirm: '로그아웃 하시겠습니까?'
   },
   en: {
     appTitle: 'My Manuscripts',
@@ -71,7 +90,26 @@ const i18n = {
     language: 'Language',
     langKo: '한국어',
     langEn: 'English',
-    close: 'Close'
+    close: 'Close',
+    // login
+    loginId: 'Username',
+    loginPw: 'Password',
+    loginBtn: 'Log in',
+    loginIdPlaceholder: 'Enter your username',
+    loginPwPlaceholder: 'Enter your password',
+    registerNewId: 'New username',
+    registerPw: 'Password',
+    registerPwConfirm: 'Confirm password',
+    registerBtn: 'Create account',
+    toggleToRegister: "Don't have an account? Sign up",
+    toggleToLogin: 'Already have an account? Log in',
+    errLoginEmpty: 'Please enter your username and password.',
+    errLoginFail: 'Incorrect username or password.',
+    errRegisterShortId: 'Username must be at least 2 characters.',
+    errRegisterShortPw: 'Password must be at least 6 characters.',
+    errRegisterPwMismatch: 'Passwords do not match.',
+    errRegisterDupId: 'This username is already taken.',
+    logoutConfirm: 'Are you sure you want to log out?'
   }
 };
 
@@ -99,7 +137,8 @@ const state = {
   categories: [],
   activeCategory: null,
   sortOrder: 'newest',
-  viewMode: 'card'
+  viewMode: 'card',
+  currentUser: null
 };
 
 const history = { undoStack: [], redoStack: [], maxSize: 50 };
@@ -899,8 +938,9 @@ function updateCounts() {
 // localStorage
 // =============================
 
-function saveMemos() { localStorage.setItem('layerMemos', JSON.stringify(state.memos)); }
-function loadMemos() { const s = localStorage.getItem('layerMemos'); if (s) state.memos = JSON.parse(s); }
+function memosKey() { return state.currentUser ? 'layerMemos_' + state.currentUser : 'layerMemos'; }
+function saveMemos() { localStorage.setItem(memosKey(), JSON.stringify(state.memos)); }
+function loadMemos() { const s = localStorage.getItem(memosKey()); if (s) state.memos = JSON.parse(s); else state.memos = []; }
 
 // =============================
 // Enter 키 처리
@@ -1488,13 +1528,16 @@ editor.addEventListener('input', () => {
 // 카테고리 관리
 // =============================
 
+function categoriesKey() { return state.currentUser ? 'layerCategories_' + state.currentUser : 'layerCategories'; }
+
 function loadCategories() {
-  const s = localStorage.getItem('layerCategories');
+  const s = localStorage.getItem(categoriesKey());
   if (s) state.categories = JSON.parse(s);
+  else state.categories = [];
 }
 
 function saveCategories() {
-  localStorage.setItem('layerCategories', JSON.stringify(state.categories));
+  localStorage.setItem(categoriesKey(), JSON.stringify(state.categories));
 }
 
 function renderCategories() {
@@ -1649,11 +1692,183 @@ langSelect.addEventListener('change', e => {
 });
 
 // =============================
+// 인증 (로그인 / 회원가입)
+// =============================
+
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + 'laywri-salt-v1');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function loadUsers() {
+  const s = localStorage.getItem('layerUsers');
+  return s ? JSON.parse(s) : [];
+}
+
+function saveUsers(users) {
+  localStorage.setItem('layerUsers', JSON.stringify(users));
+}
+
+function getSession() {
+  const s = localStorage.getItem('layerSession');
+  if (!s) return null;
+  const session = JSON.parse(s);
+  if (session.expiresAt < Date.now()) {
+    localStorage.removeItem('layerSession');
+    return null;
+  }
+  return session;
+}
+
+function createSession(username) {
+  const session = {
+    username,
+    token: Math.random().toString(36).slice(2) + Date.now().toString(36),
+    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7일
+  };
+  localStorage.setItem('layerSession', JSON.stringify(session));
+}
+
+function clearSession() {
+  localStorage.removeItem('layerSession');
+}
+
+function showLoginScreen() {
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('listScreen').classList.add('hidden');
+  document.getElementById('editorScreen').classList.add('hidden');
+}
+
+function updateUserDisplay() {
+  const el = document.getElementById('currentUser');
+  if (el) el.textContent = state.currentUser || '';
+}
+
+function onLoginSuccess(username) {
+  state.currentUser = username;
+  state.memos = [];
+  state.categories = [];
+  loadMemos();
+  loadCategories();
+  document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
+  updateUILanguage();
+  document.getElementById('loginScreen').classList.add('hidden');
+  showListScreen();
+  updateUserDisplay();
+}
+
+function logout() {
+  if (!confirm(t('logoutConfirm'))) return;
+  clearSession();
+  state.currentUser = null;
+  state.memos = [];
+  state.categories = [];
+  showLoginScreen();
+}
+
+// 로그인 폼 제출
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('loginError');
+
+  if (!username || !password) {
+    errorEl.textContent = t('errLoginEmpty');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  const users = loadUsers();
+  const hash = await hashPassword(password);
+  const user = users.find(u => u.username === username && u.passwordHash === hash);
+
+  if (!user) {
+    errorEl.textContent = t('errLoginFail');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  errorEl.classList.add('hidden');
+  createSession(username);
+  onLoginSuccess(username);
+});
+
+// 회원가입 폼 제출
+document.getElementById('registerForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const username = document.getElementById('registerUsername').value.trim();
+  const password = document.getElementById('registerPassword').value;
+  const confirm = document.getElementById('registerPasswordConfirm').value;
+  const errorEl = document.getElementById('registerError');
+
+  if (!username || username.length < 2) {
+    errorEl.textContent = t('errRegisterShortId');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  if (password.length < 6) {
+    errorEl.textContent = t('errRegisterShortPw');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  if (password !== confirm) {
+    errorEl.textContent = t('errRegisterPwMismatch');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  const users = loadUsers();
+  if (users.find(u => u.username === username)) {
+    errorEl.textContent = t('errRegisterDupId');
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  const hash = await hashPassword(password);
+  users.push({ username, passwordHash: hash, createdAt: Date.now() });
+  saveUsers(users);
+
+  errorEl.classList.add('hidden');
+  createSession(username);
+  onLoginSuccess(username);
+});
+
+// 로그인 ↔ 회원가입 전환
+document.getElementById('toggleAuthBtn').addEventListener('click', () => {
+  const loginForm = document.getElementById('loginForm');
+  const registerForm = document.getElementById('registerForm');
+  const toggleBtn = document.getElementById('toggleAuthBtn');
+  const isLogin = !loginForm.classList.contains('hidden');
+  loginForm.classList.toggle('hidden', isLogin);
+  registerForm.classList.toggle('hidden', !isLogin);
+  toggleBtn.textContent = isLogin ? t('toggleToLogin') : t('toggleToRegister');
+  document.getElementById('loginError').classList.add('hidden');
+  document.getElementById('registerError').classList.add('hidden');
+});
+
+// 로그아웃 버튼
+document.getElementById('logoutBtn').addEventListener('click', logout);
+
+// =============================
 // 초기화
 // =============================
 
-loadMemos();
-loadCategories();
 document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
-updateUILanguage();
-showListScreen();
+
+(function initAuth() {
+  const session = getSession();
+  if (session) {
+    state.currentUser = session.username;
+    loadMemos();
+    loadCategories();
+    updateUILanguage();
+    showListScreen();
+    updateUserDisplay();
+  } else {
+    showLoginScreen();
+  }
+})();

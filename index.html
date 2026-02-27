@@ -10,13 +10,64 @@
 </head>
 <body>
 
-  <div class="screen" id="listScreen">
+  <!-- 로그인 화면 -->
+  <div class="screen" id="loginScreen">
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="logo-icon"><span class="material-symbols-outlined">layers</span></div>
+          <h1>LayWri</h1>
+          <p class="login-subtitle">레이어 글쓰기</p>
+        </div>
+
+        <form class="login-form" id="loginForm" autocomplete="off">
+          <div class="login-field">
+            <label for="loginUsername">아이디</label>
+            <input type="text" id="loginUsername" placeholder="아이디를 입력하세요" autocomplete="username"/>
+          </div>
+          <div class="login-field">
+            <label for="loginPassword">비밀번호</label>
+            <input type="password" id="loginPassword" placeholder="비밀번호를 입력하세요" autocomplete="current-password"/>
+          </div>
+          <div class="login-error hidden" id="loginError"></div>
+          <button type="submit" class="login-btn">로그인</button>
+        </form>
+
+        <div class="login-divider"><span>또는</span></div>
+
+        <form class="login-form hidden" id="registerForm" autocomplete="off">
+          <div class="login-field">
+            <label for="registerUsername">새 아이디</label>
+            <input type="text" id="registerUsername" placeholder="사용할 아이디 (2자 이상)" autocomplete="username"/>
+          </div>
+          <div class="login-field">
+            <label for="registerPassword">비밀번호</label>
+            <input type="password" id="registerPassword" placeholder="비밀번호 (6자 이상)" autocomplete="new-password"/>
+          </div>
+          <div class="login-field">
+            <label for="registerPasswordConfirm">비밀번호 확인</label>
+            <input type="password" id="registerPasswordConfirm" placeholder="비밀번호를 다시 입력하세요" autocomplete="new-password"/>
+          </div>
+          <div class="register-error hidden" id="registerError"></div>
+          <button type="submit" class="login-btn">계정 만들기</button>
+        </form>
+
+        <button class="toggle-auth-btn" id="toggleAuthBtn">계정이 없으신가요? 회원가입</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen hidden" id="listScreen">
     <header class="list-header">
       <div class="list-header-left">
         <div class="logo-icon"><span class="material-symbols-outlined">layers</span></div>
         <h1 id="appTitle">내 원고 보관함</h1>
       </div>
-      <button class="settings-btn" id="settingsBtn"><span class="material-symbols-outlined">settings</span></button>
+      <div class="header-right-group">
+        <span class="current-user-badge" id="currentUser"></span>
+        <button class="settings-btn" id="settingsBtn"><span class="material-symbols-outlined">settings</span></button>
+        <button class="logout-btn" id="logoutBtn" title="로그아웃"><span class="material-symbols-outlined">logout</span></button>
+      </div>
     </header>
 
     <main class="list-main">
