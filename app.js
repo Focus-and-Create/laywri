@@ -1398,60 +1398,60 @@ layerList.addEventListener('mousedown', e => {
 
   if (toggle) {
     e.preventDefault();
-    toggleLayerVisibility(toggle.dataset.id); // 가시성 토글
+    toggleLayerVisibility(toggle.dataset.id);
     return;
   }
   if (swatch) {
     e.preventDefault();
-    openColorPopup(swatch.dataset.id, swatch); // 색상 팝업 열기
+    openColorPopup(swatch.dataset.id, swatch);
     return;
   }
-  // readonly 상태의 이름 클릭은 레이어 전환으로 동작 (편집 모드가 아닐 때)
-  if (name && name.hasAttribute('readonly')) {
-    // readonly이면 레이어 전환 처리로 통과시킴 (아래 item 로직에서 처리)
-  } else if (name) {
-    return; // 편집 모드(readonly 아닌 상태)에서는 클릭 무시
+
+  if (!item) return;
+  const lid = item.dataset.id;
+
+  // 이름 input 위 클릭
+  if (name) {
+    if (!name.hasAttribute('readonly')) return; // 편집 중: 기본 동작 허용
+    if (state.activeLayerId === lid) return;     // 이미 활성: 기본 동작 허용 → 더블클릭 편집 가능
+
+    // 비활성 레이어 이름 클릭 → 활성화만
+    e.preventDefault();
+    state.activeLayerId = lid;
+    renderLayers();
+    saveCurrentMemo();
+    return;
   }
-  
-  if (item) {
-    e.preventDefault(); // 기본 동작 방지
-    const lid = item.dataset.id; // 레이어 ID
-    
-    // 저장된 선택 영역이 있으면 사용
+
+  // 이름 외 영역 클릭 (레이어 활성화 + 선택 텍스트에 레이어 적용)
+  e.preventDefault();
+  if (editorSelection) {
+    try {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(editorSelection.cloneRange());
+      applyLayerToRange(lid, editorSelection.cloneRange());
+      sel.removeAllRanges();
+      sel.addRange(editorSelection.cloneRange());
+    } catch (err) {
+      console.log('Selection error:', err);
+    }
+  }
+  state.activeLayerId = lid;
+  renderLayers();
+  saveCurrentMemo();
+
+  // 에디터에 포커스 복원
+  setTimeout(() => {
+    editor.focus();
     if (editorSelection) {
       try {
-        // 선택 영역 복원
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(editorSelection.cloneRange());
-        
-        // 레이어 적용
-        applyLayerToRange(lid, editorSelection.cloneRange());
-        
-        // 선택 영역 유지
-        sel.removeAllRanges();
-        sel.addRange(editorSelection.cloneRange());
-      } catch (e) {
-        console.log('Selection error:', e);
-      }
+      } catch (err) {}
     }
-    
-    state.activeLayerId = lid; // 활성 레이어 변경
-    renderLayers(); 
-    saveCurrentMemo();
-    
-    // 에디터에 포커스 복원
-    setTimeout(() => {
-      editor.focus();
-      if (editorSelection) {
-        try {
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(editorSelection.cloneRange());
-        } catch (e) {}
-      }
-    }, 10);
-  }
+  }, 10);
 });
 
 // 레이어 이름 더블클릭으로 편집 모드 진입
