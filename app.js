@@ -1928,6 +1928,7 @@ document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
   const session = getSession();
   if (session) {
     state.currentUser = session.username;
+    document.getElementById('loginScreen').classList.add('hidden');
     loadMemos();
     loadCategories();
     updateUILanguage();
