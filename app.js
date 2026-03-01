@@ -119,6 +119,26 @@ function t(key) {
   return (i18n[currentLang] && i18n[currentLang][key]) || i18n.ko[key] || key;
 }
 
+// HTML 새니타이저 — DOMPurify가 로드되었으면 사용, 아니면 기본 이스케이프
+function sanitizeHTML(html) {
+  if (typeof DOMPurify !== 'undefined') {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['span', 'br', 'div', 'b', 'i', 'u', 's', 'strong', 'em', 'ul', 'ol', 'li', 'p', 'strike'],
+      ALLOWED_ATTR: ['class', 'data-layer', 'style'],
+      ALLOW_DATA_ATTR: true
+    });
+  }
+  // DOMPurify 미로드 시 기본 방어: script 태그 제거
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+}
+
+// 텍스트 이스케이프 (innerHTML 렌더링 시 사용자 입력 보호)
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 // =============================
 // 상태 관리
 // =============================
@@ -249,7 +269,9 @@ function applyFormat(command, value = null) {
             text: span.textContent                                       // 텍스트 내용
           });
         }
-      } catch (e) {}
+      } catch (e) {
+        // Range 비교 실패 시 무시 (이미 삭제된 노드 등)
+      }
     });
   }
 
@@ -550,7 +572,7 @@ function openMemo(memoId) {
   state.layers = JSON.parse(JSON.stringify(memo.layers));
   state.activeLayerId = memo.activeLayerId;
   memoTitle.value = memo.title;
-  editor.innerHTML = memo.content;
+  editor.innerHTML = sanitizeHTML(memo.content);
   showEditorScreen();
   renderLayers();
   updateLayerStyles();
@@ -610,7 +632,10 @@ function renderMemoList() {
     const preview = memo.content.replace(/<[^>]*>/g, '').slice(0, 100);
     const date = new Date(memo.updatedAt).toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' });
     const c = memo.layers[0]?.color || '#94a3b8';
-    return `<div class="memo-card" data-id="${memo.id}"><div class="memo-card-indicator" style="background:${c}"></div><div class="memo-card-body"><div class="memo-card-header"><h3 class="memo-card-title">${memo.title||t('untitled')}</h3><button class="memo-card-delete" data-id="${memo.id}"><span class="material-symbols-outlined">delete</span></button></div><p class="memo-card-preview">${preview||t('noContent')}</p><div class="memo-card-footer"><span class="memo-card-date">${date}</span><span class="memo-card-dot" style="background:${c}"></span></div></div></div>`;
+    const safeTitle = escapeHTML(memo.title || t('untitled'));
+    const safePreview = escapeHTML(preview || t('noContent'));
+    const safeId = escapeHTML(memo.id);
+    return `<div class="memo-card" data-id="${safeId}"><div class="memo-card-indicator" style="background:${c}"></div><div class="memo-card-body"><div class="memo-card-header"><h3 class="memo-card-title">${safeTitle}</h3><button class="memo-card-delete" data-id="${safeId}"><span class="material-symbols-outlined">delete</span></button></div><p class="memo-card-preview">${safePreview}</p><div class="memo-card-footer"><span class="memo-card-date">${date}</span><span class="memo-card-dot" style="background:${c}"></span></div></div></div>`;
   }).join('');
 }
 
@@ -628,7 +653,7 @@ function undo() {
   if (history.undoStack.length === 0) return;
   history.redoStack.push({ layers: JSON.parse(JSON.stringify(state.layers)), activeLayerId: state.activeLayerId, content: editor.innerHTML });
   const prev = history.undoStack.pop();
-  state.layers = prev.layers; state.activeLayerId = prev.activeLayerId; editor.innerHTML = prev.content;
+  state.layers = prev.layers; state.activeLayerId = prev.activeLayerId; editor.innerHTML = sanitizeHTML(prev.content);
   renderLayers(); updateLayerStyles(); updateLayerVisibility(); updateCounts(); saveCurrentMemo();
 }
 
@@ -636,7 +661,7 @@ function redo() {
   if (history.redoStack.length === 0) return;
   history.undoStack.push({ layers: JSON.parse(JSON.stringify(state.layers)), activeLayerId: state.activeLayerId, content: editor.innerHTML });
   const next = history.redoStack.pop();
-  state.layers = next.layers; state.activeLayerId = next.activeLayerId; editor.innerHTML = next.content;
+  state.layers = next.layers; state.activeLayerId = next.activeLayerId; editor.innerHTML = sanitizeHTML(next.content);
   renderLayers(); updateLayerStyles(); updateLayerVisibility(); updateCounts(); saveCurrentMemo();
 }
 
@@ -937,8 +962,31 @@ function updateCounts() {
 // =============================
 
 function memosKey() { return state.currentUser ? 'layerMemos_' + state.currentUser : 'layerMemos'; }
-function saveMemos() { localStorage.setItem(memosKey(), JSON.stringify(state.memos)); }
-function loadMemos() { const s = localStorage.getItem(memosKey()); if (s) state.memos = JSON.parse(s); else state.memos = []; }
+
+function saveMemos() {
+  try {
+    localStorage.setItem(memosKey(), JSON.stringify(state.memos));
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      const msg = currentLang === 'ko'
+        ? '저장 공간이 부족합니다. 불필요한 메모를 삭제하거나 데이터를 내보내세요.'
+        : 'Storage is full. Please delete unused memos or export your data.';
+      alert(msg);
+    }
+  }
+}
+
+function loadMemos() {
+  try {
+    const s = localStorage.getItem(memosKey());
+    if (s) state.memos = JSON.parse(s);
+    else state.memos = [];
+  } catch (e) {
+    // JSON 파싱 실패 시 데이터 손상 — 빈 상태로 시작
+    console.error('메모 데이터 복구 불가:', e);
+    state.memos = [];
+  }
+}
 
 // =============================
 // Enter 키 처리
@@ -1449,7 +1497,9 @@ layerList.addEventListener('mousedown', e => {
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(editorSelection.cloneRange());
-      } catch (err) {}
+      } catch (err) {
+        // 커서 복원 실패 시 무시 (에디터 외부 포커스 등)
+      }
     }
   }, 10);
 });
@@ -1506,13 +1556,24 @@ editor.addEventListener('input', () => {
 function categoriesKey() { return state.currentUser ? 'layerCategories_' + state.currentUser : 'layerCategories'; }
 
 function loadCategories() {
-  const s = localStorage.getItem(categoriesKey());
-  if (s) state.categories = JSON.parse(s);
-  else state.categories = [];
+  try {
+    const s = localStorage.getItem(categoriesKey());
+    if (s) state.categories = JSON.parse(s);
+    else state.categories = [];
+  } catch (e) {
+    console.error('카테고리 데이터 손상:', e);
+    state.categories = [];
+  }
 }
 
 function saveCategories() {
-  localStorage.setItem(categoriesKey(), JSON.stringify(state.categories));
+  try {
+    localStorage.setItem(categoriesKey(), JSON.stringify(state.categories));
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      console.error('저장 공간 부족:', e);
+    }
+  }
 }
 
 function renderCategories() {
@@ -1760,7 +1821,28 @@ document.addEventListener('mousedown', e => {
 // 인증 (로그인 / 회원가입)
 // =============================
 
-async function hashPassword(password) {
+// PBKDF2 기반 패스워드 해싱 (사용자별 랜덤 salt)
+function generateSalt() {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashPasswordWithSalt(password, salt) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  const hashArray = Array.from(new Uint8Array(derivedBits));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 레거시 SHA-256 해싱 (기존 사용자 마이그레이션용)
+async function hashPasswordLegacy(password) {
   const encoder = new TextEncoder();
   const data = encoder.encode(password + 'laywri-salt-v1');
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -1769,8 +1851,13 @@ async function hashPassword(password) {
 }
 
 function loadUsers() {
-  const s = localStorage.getItem('layerUsers');
-  return s ? JSON.parse(s) : [];
+  try {
+    const s = localStorage.getItem('layerUsers');
+    return s ? JSON.parse(s) : [];
+  } catch (e) {
+    console.error('사용자 데이터 손상:', e);
+    return [];
+  }
 }
 
 function saveUsers(users) {
@@ -1778,20 +1865,28 @@ function saveUsers(users) {
 }
 
 function getSession() {
-  const s = localStorage.getItem('layerSession');
-  if (!s) return null;
-  const session = JSON.parse(s);
-  if (session.expiresAt < Date.now()) {
+  try {
+    const s = localStorage.getItem('layerSession');
+    if (!s) return null;
+    const session = JSON.parse(s);
+    if (session.expiresAt < Date.now()) {
+      localStorage.removeItem('layerSession');
+      return null;
+    }
+    return session;
+  } catch (e) {
     localStorage.removeItem('layerSession');
     return null;
   }
-  return session;
 }
 
 function createSession(username) {
+  const tokenBytes = new Uint8Array(32);
+  crypto.getRandomValues(tokenBytes);
+  const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
   const session = {
     username,
-    token: Math.random().toString(36).slice(2) + Date.now().toString(36),
+    token,
     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7일
   };
   localStorage.setItem('layerSession', JSON.stringify(session));
@@ -1848,8 +1943,29 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   }
 
   const users = loadUsers();
-  const hash = await hashPassword(password);
-  const user = users.find(u => u.username === username && u.passwordHash === hash);
+  let user = null;
+
+  // PBKDF2 해싱된 사용자 확인
+  const pbkdf2User = users.find(u => u.username === username && u.salt);
+  if (pbkdf2User) {
+    const hash = await hashPasswordWithSalt(password, pbkdf2User.salt);
+    if (pbkdf2User.passwordHash === hash) user = pbkdf2User;
+  }
+
+  // 레거시(SHA-256) 사용자 확인 및 자동 마이그레이션
+  if (!user) {
+    const legacyHash = await hashPasswordLegacy(password);
+    const legacyUser = users.find(u => u.username === username && u.passwordHash === legacyHash && !u.salt);
+    if (legacyUser) {
+      user = legacyUser;
+      // PBKDF2로 자동 마이그레이션
+      const newSalt = generateSalt();
+      const newHash = await hashPasswordWithSalt(password, newSalt);
+      user.salt = newSalt;
+      user.passwordHash = newHash;
+      saveUsers(users);
+    }
+  }
 
   if (!user) {
     errorEl.textContent = t('errLoginFail');
@@ -1893,8 +2009,9 @@ document.getElementById('registerForm').addEventListener('submit', async e => {
     return;
   }
 
-  const hash = await hashPassword(password);
-  users.push({ username, passwordHash: hash, createdAt: Date.now() });
+  const salt = generateSalt();
+  const hash = await hashPasswordWithSalt(password, salt);
+  users.push({ username, passwordHash: hash, salt, createdAt: Date.now() });
   saveUsers(users);
 
   errorEl.classList.add('hidden');
