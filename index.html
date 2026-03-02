@@ -32,7 +32,8 @@
             <input type="password" id="loginPassword" placeholder="비밀번호를 입력하세요" autocomplete="current-password"/>
           </div>
           <div class="login-error hidden" id="loginError"></div>
-          <button type="submit" class="login-btn">로그인</button>
+          <button type="submit" class="login-btn" id="loginBtn">로그인</button>
+          <button type="button" class="forgot-password-btn" id="forgotPasswordBtn">비밀번호를 잊으셨나요?</button>
         </form>
 
         <div class="login-divider"><span>또는</span></div>
@@ -51,7 +52,7 @@
             <input type="password" id="registerPasswordConfirm" placeholder="비밀번호를 다시 입력하세요" autocomplete="new-password"/>
           </div>
           <div class="register-error hidden" id="registerError"></div>
-          <button type="submit" class="login-btn">계정 만들기</button>
+          <button type="submit" class="login-btn" id="registerBtn">계정 만들기</button>
         </form>
 
         <button class="toggle-auth-btn" id="toggleAuthBtn">계정이 없으신가요? 회원가입</button>
@@ -66,6 +67,10 @@
         <h1 id="appTitle">내 원고 보관함</h1>
       </div>
       <div class="header-right-group">
+        <span class="sync-status" id="syncStatus" title="온라인">
+          <span class="sync-dot"></span>
+          <span class="sync-label">온라인</span>
+        </span>
         <span class="current-user-badge" id="currentUser"></span>
         <button class="settings-btn" id="settingsBtn"><span class="material-symbols-outlined">settings</span></button>
         <button class="logout-btn" id="logoutBtn" title="로그아웃"><span class="material-symbols-outlined">logout</span></button>
@@ -203,9 +208,25 @@
           <option value="en">English</option>
         </select>
       </div>
+      <div class="settings-divider"></div>
+      <h3 id="accountSectionTitle" class="settings-section-title">계정</h3>
+      <div class="settings-row">
+        <label>이메일</label>
+        <span class="settings-value" id="accountEmail">-</span>
+      </div>
+      <div class="settings-row">
+        <label id="changePasswordLabel">비밀번호 변경</label>
+        <div class="settings-inline-form">
+          <input type="password" id="newPasswordInput" placeholder="새 비밀번호 (6자 이상)" class="settings-input"/>
+          <button type="button" id="changePasswordBtn" class="settings-action-btn">변경</button>
+        </div>
+      </div>
       <button class="modal-close-btn" id="settingsClose"><span>닫기</span></button>
     </div>
   </div>
+
+  <!-- 토스트 알림 -->
+  <div class="toast-container" id="toastContainer"></div>
 
   <script src="app.js"></script>
 </body>

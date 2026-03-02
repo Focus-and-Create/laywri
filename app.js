@@ -60,7 +60,25 @@ const i18n = {
     errRegisterDupEmail: '이미 사용 중인 이메일입니다.',
     errRegisterGeneric: '회원가입 중 오류가 발생했습니다.',
     errLoginGeneric: '로그인 중 오류가 발생했습니다.',
-    logoutConfirm: '로그아웃 하시겠습니까?'
+    logoutConfirm: '로그아웃 하시겠습니까?',
+    forgotPassword: '비밀번호를 잊으셨나요?',
+    resetPasswordPrompt: '가입한 이메일을 입력하세요:',
+    resetEmailSent: '비밀번호 재설정 이메일을 발송했습니다.',
+    resetEmailFail: '이메일 발송에 실패했습니다.',
+    syncSuccess: '동기화 완료',
+    syncFail: '동기화 실패',
+    online: '온라인',
+    offline: '오프라인',
+    syncing: '동기화 중...',
+    accountSection: '계정',
+    changePassword: '비밀번호 변경',
+    newPassword: '새 비밀번호',
+    newPasswordPlaceholder: '새 비밀번호 (6자 이상)',
+    passwordChanged: '비밀번호가 변경되었습니다.',
+    passwordChangeFail: '비밀번호 변경에 실패했습니다.',
+    deleteAccount: '계정 삭제',
+    deleteAccountConfirm: '정말 계정을 삭제하시겠습니까?\n모든 데이터가 영구적으로 삭제됩니다.',
+    processing: '처리 중...'
   },
   en: {
     appTitle: 'My Manuscripts',
@@ -113,7 +131,25 @@ const i18n = {
     errRegisterDupEmail: 'This email is already registered.',
     errRegisterGeneric: 'An error occurred during registration.',
     errLoginGeneric: 'An error occurred during login.',
-    logoutConfirm: 'Are you sure you want to log out?'
+    logoutConfirm: 'Are you sure you want to log out?',
+    forgotPassword: 'Forgot password?',
+    resetPasswordPrompt: 'Enter your registered email:',
+    resetEmailSent: 'Password reset email sent.',
+    resetEmailFail: 'Failed to send reset email.',
+    syncSuccess: 'Synced',
+    syncFail: 'Sync failed',
+    online: 'Online',
+    offline: 'Offline',
+    syncing: 'Syncing...',
+    accountSection: 'Account',
+    changePassword: 'Change password',
+    newPassword: 'New password',
+    newPasswordPlaceholder: 'New password (min 6 chars)',
+    passwordChanged: 'Password changed successfully.',
+    passwordChangeFail: 'Failed to change password.',
+    deleteAccount: 'Delete account',
+    deleteAccountConfirm: 'Are you sure you want to delete your account?\nAll data will be permanently deleted.',
+    processing: 'Processing...'
   }
 };
 
@@ -137,6 +173,60 @@ const supabaseClient = (typeof supabase !== 'undefined' && supabase.createClient
 function isSupabaseReady() {
   return supabaseClient && SUPABASE_URL !== 'https://YOUR_PROJECT_URL.supabase.co';
 }
+
+// =============================
+// 토스트 알림
+// =============================
+
+function showToast(message, type) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = 'toast ' + (type || 'info');
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// =============================
+// 동기화 상태 인디케이터
+// =============================
+
+function setSyncStatus(status) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.className = 'sync-status ' + status;
+  const label = el.querySelector('.sync-label');
+  if (status === 'online') {
+    label.textContent = t('online');
+  } else if (status === 'offline') {
+    label.textContent = t('offline');
+  } else if (status === 'syncing') {
+    label.textContent = t('syncing');
+  } else if (status === 'error') {
+    label.textContent = t('syncFail');
+  }
+}
+
+// 온라인/오프라인 감지
+window.addEventListener('online', () => {
+  setSyncStatus('online');
+  // 재연결 시 전체 동기화
+  if (state.currentUser && isSupabaseReady()) {
+    setSyncStatus('syncing');
+    syncAllMemosToSupabase()
+      .then(() => syncCategoriesToSupabase())
+      .then(() => {
+        setSyncStatus('online');
+        showToast(t('syncSuccess'), 'success');
+      })
+      .catch(() => setSyncStatus('error'));
+  }
+});
+
+window.addEventListener('offline', () => {
+  setSyncStatus('offline');
+});
 
 // HTML 새니타이저 — DOMPurify가 로드되었으면 사용, 아니면 기본 이스케이프
 function sanitizeHTML(html) {
@@ -1012,8 +1102,9 @@ function loadMemosLocal() {
 // Supabase에 메모 하나를 upsert
 async function syncMemoToSupabase(memo) {
   if (!isSupabaseReady() || !state.currentUser) return;
+  setSyncStatus('syncing');
   try {
-    await supabaseClient.from('memos').upsert({
+    const { error } = await supabaseClient.from('memos').upsert({
       id: memo.id,
       user_id: state.currentUser,
       title: memo.title,
@@ -1024,18 +1115,25 @@ async function syncMemoToSupabase(memo) {
       created_at: memo.createdAt,
       updated_at: memo.updatedAt
     });
+    if (error) throw error;
+    setSyncStatus('online');
   } catch (e) {
     console.error('Supabase 메모 동기화 실패:', e);
+    setSyncStatus('error');
   }
 }
 
 // Supabase에서 메모 하나 삭제
 async function deleteMemoFromSupabase(memoId) {
   if (!isSupabaseReady() || !state.currentUser) return;
+  setSyncStatus('syncing');
   try {
-    await supabaseClient.from('memos').delete().eq('id', memoId).eq('user_id', state.currentUser);
+    const { error } = await supabaseClient.from('memos').delete().eq('id', memoId).eq('user_id', state.currentUser);
+    if (error) throw error;
+    setSyncStatus('online');
   } catch (e) {
     console.error('Supabase 메모 삭제 실패:', e);
+    setSyncStatus('error');
   }
 }
 
@@ -1880,10 +1978,56 @@ function updateUILanguage() {
   document.getElementById('charLabel').textContent = t('charCount') + ': ';
   document.getElementById('wordLabel').textContent = t('wordCount') + ': ';
 
+  // 로그인/회원가입 폼
+  const loginEmailLabel = document.querySelector('label[for="loginEmail"]');
+  const loginPwLabel = document.querySelector('label[for="loginPassword"]');
+  const loginEmailInput = document.getElementById('loginEmail');
+  const loginPwInput = document.getElementById('loginPassword');
+  const regEmailLabel = document.querySelector('label[for="registerEmail"]');
+  const regPwLabel = document.querySelector('label[for="registerPassword"]');
+  const regPwConfirmLabel = document.querySelector('label[for="registerPasswordConfirm"]');
+  const regEmailInput = document.getElementById('registerEmail');
+  const regPwInput = document.getElementById('registerPassword');
+  const regPwConfirmInput = document.getElementById('registerPasswordConfirm');
+  if (loginEmailLabel) loginEmailLabel.textContent = t('loginEmail');
+  if (loginPwLabel) loginPwLabel.textContent = t('loginPw');
+  if (loginEmailInput) loginEmailInput.placeholder = t('loginEmailPlaceholder');
+  if (loginPwInput) loginPwInput.placeholder = t('loginPwPlaceholder');
+  if (regEmailLabel) regEmailLabel.textContent = t('registerEmail');
+  if (regPwLabel) regPwLabel.textContent = t('registerPw');
+  if (regPwConfirmLabel) regPwConfirmLabel.textContent = t('registerPwConfirm');
+  if (regEmailInput) regEmailInput.placeholder = t('loginEmailPlaceholder');
+  if (regPwInput) regPwInput.placeholder = t('loginPwPlaceholder');
+  if (regPwConfirmInput) regPwConfirmInput.placeholder = t('loginPwPlaceholder');
+  const loginBtn = document.querySelector('#loginForm .login-btn');
+  const registerBtn = document.querySelector('#registerForm .login-btn');
+  if (loginBtn) loginBtn.textContent = t('loginBtn');
+  if (registerBtn) registerBtn.textContent = t('registerBtn');
+  const toggleBtn = document.getElementById('toggleAuthBtn');
+  if (toggleBtn) {
+    const isLogin = !document.getElementById('loginForm').classList.contains('hidden');
+    toggleBtn.textContent = isLogin ? t('toggleToRegister') : t('toggleToLogin');
+  }
+
   // 설정 모달
   document.getElementById('settingsTitle').textContent = t('settings');
   document.getElementById('langLabel').textContent = t('language');
   settingsClose.querySelector('span').textContent = t('close');
+
+  // 계정 섹션
+  const acctTitle = document.getElementById('accountSectionTitle');
+  if (acctTitle) acctTitle.textContent = t('accountSection');
+  const chPwLabel = document.getElementById('changePasswordLabel');
+  if (chPwLabel) chPwLabel.textContent = t('changePassword');
+  const pwInput = document.getElementById('newPasswordInput');
+  if (pwInput) pwInput.placeholder = t('newPasswordPlaceholder');
+
+  // 동기화 상태 라벨
+  setSyncStatus(navigator.onLine ? 'online' : 'offline');
+
+  // 비밀번호 찾기 버튼
+  const forgotBtn = document.getElementById('forgotPasswordBtn');
+  if (forgotBtn) forgotBtn.textContent = t('forgotPassword');
 
   // 언어 선택 업데이트
   langSelect.value = currentLang;
@@ -2119,6 +2263,7 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
 
   if (!email || !password) {
     errorEl.textContent = t('errLoginEmpty');
@@ -2132,7 +2277,13 @@ document.getElementById('loginForm').addEventListener('submit', async e => {
     return;
   }
 
+  btn.disabled = true;
+  btn.textContent = t('processing');
+
   const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  btn.disabled = false;
+  btn.textContent = t('loginBtn');
 
   if (error) {
     if (error.message.includes('Invalid login')) {
@@ -2155,6 +2306,7 @@ document.getElementById('registerForm').addEventListener('submit', async e => {
   const password = document.getElementById('registerPassword').value;
   const confirmPw = document.getElementById('registerPasswordConfirm').value;
   const errorEl = document.getElementById('registerError');
+  const btn = document.getElementById('registerBtn');
 
   if (!email) {
     errorEl.textContent = t('errInvalidEmail');
@@ -2178,7 +2330,13 @@ document.getElementById('registerForm').addEventListener('submit', async e => {
     return;
   }
 
+  btn.disabled = true;
+  btn.textContent = t('processing');
+
   const { data, error } = await supabaseClient.auth.signUp({ email, password });
+
+  btn.disabled = false;
+  btn.textContent = t('registerBtn');
 
   if (error) {
     if (error.message.includes('already registered')) {
@@ -2204,6 +2362,20 @@ document.getElementById('registerForm').addEventListener('submit', async e => {
   await onLoginSuccess(data.user);
 });
 
+// 비밀번호 재설정
+document.getElementById('forgotPasswordBtn').addEventListener('click', async () => {
+  const email = prompt(t('resetPasswordPrompt'));
+  if (!email || !email.trim()) return;
+  if (!isSupabaseReady()) return;
+
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email.trim());
+  if (error) {
+    showToast(t('resetEmailFail'), 'error');
+  } else {
+    showToast(t('resetEmailSent'), 'success');
+  }
+});
+
 // 로그인 ↔ 회원가입 전환
 document.getElementById('toggleAuthBtn').addEventListener('click', () => {
   const loginForm = document.getElementById('loginForm');
@@ -2220,6 +2392,44 @@ document.getElementById('toggleAuthBtn').addEventListener('click', () => {
 // 로그아웃 버튼
 document.getElementById('logoutBtn').addEventListener('click', logout);
 
+// 비밀번호 변경
+document.getElementById('changePasswordBtn').addEventListener('click', async () => {
+  const input = document.getElementById('newPasswordInput');
+  const btn = document.getElementById('changePasswordBtn');
+  const newPassword = input.value;
+
+  if (!newPassword || newPassword.length < 6) {
+    showToast(t('errRegisterShortPw'), 'error');
+    return;
+  }
+  if (!isSupabaseReady()) return;
+
+  btn.disabled = true;
+  const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+  btn.disabled = false;
+
+  if (error) {
+    showToast(t('passwordChangeFail'), 'error');
+  } else {
+    showToast(t('passwordChanged'), 'success');
+    input.value = '';
+  }
+});
+
+// 설정 모달 열 때 계정 정보 업데이트
+const origOpenSettings = openSettings;
+openSettings = function() {
+  const emailEl = document.getElementById('accountEmail');
+  if (emailEl) emailEl.textContent = state.currentUserEmail || '-';
+  const accountTitle = document.getElementById('accountSectionTitle');
+  if (accountTitle) accountTitle.textContent = t('accountSection');
+  const changePwLabel = document.getElementById('changePasswordLabel');
+  if (changePwLabel) changePwLabel.textContent = t('changePassword');
+  const pwInput = document.getElementById('newPasswordInput');
+  if (pwInput) pwInput.placeholder = t('newPasswordPlaceholder');
+  origOpenSettings();
+};
+
 // =============================
 // 초기화
 // =============================
@@ -2227,6 +2437,9 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
 
 (async function initAuth() {
+  // 초기 온라인 상태 설정
+  setSyncStatus(navigator.onLine ? 'online' : 'offline');
+
   if (!isSupabaseReady()) {
     showLoginScreen();
     return;
