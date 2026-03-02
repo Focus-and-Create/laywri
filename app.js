@@ -41,23 +41,25 @@ const i18n = {
     langEn: 'English',
     close: '닫기',
     // 로그인
-    loginId: '아이디',
+    loginEmail: '이메일',
     loginPw: '비밀번호',
     loginBtn: '로그인',
-    loginIdPlaceholder: '아이디를 입력하세요',
+    loginEmailPlaceholder: '이메일을 입력하세요',
     loginPwPlaceholder: '비밀번호를 입력하세요',
-    registerNewId: '새 아이디',
+    registerEmail: '이메일',
     registerPw: '비밀번호',
     registerPwConfirm: '비밀번호 확인',
     registerBtn: '계정 만들기',
     toggleToRegister: '계정이 없으신가요? 회원가입',
     toggleToLogin: '이미 계정이 있으신가요? 로그인',
-    errLoginEmpty: '아이디와 비밀번호를 입력하세요.',
-    errLoginFail: '아이디 또는 비밀번호가 올바르지 않습니다.',
-    errRegisterShortId: '아이디는 2자 이상이어야 합니다.',
+    errLoginEmpty: '이메일과 비밀번호를 입력하세요.',
+    errLoginFail: '이메일 또는 비밀번호가 올바르지 않습니다.',
+    errInvalidEmail: '올바른 이메일 형식을 입력하세요.',
     errRegisterShortPw: '비밀번호는 6자 이상이어야 합니다.',
     errRegisterPwMismatch: '비밀번호가 일치하지 않습니다.',
-    errRegisterDupId: '이미 사용 중인 아이디입니다.',
+    errRegisterDupEmail: '이미 사용 중인 이메일입니다.',
+    errRegisterGeneric: '회원가입 중 오류가 발생했습니다.',
+    errLoginGeneric: '로그인 중 오류가 발생했습니다.',
     logoutConfirm: '로그아웃 하시겠습니까?'
   },
   en: {
@@ -92,23 +94,25 @@ const i18n = {
     langEn: 'English',
     close: 'Close',
     // login
-    loginId: 'Username',
+    loginEmail: 'Email',
     loginPw: 'Password',
     loginBtn: 'Log in',
-    loginIdPlaceholder: 'Enter your username',
+    loginEmailPlaceholder: 'Enter your email',
     loginPwPlaceholder: 'Enter your password',
-    registerNewId: 'New username',
+    registerEmail: 'Email',
     registerPw: 'Password',
     registerPwConfirm: 'Confirm password',
     registerBtn: 'Create account',
     toggleToRegister: "Don't have an account? Sign up",
     toggleToLogin: 'Already have an account? Log in',
-    errLoginEmpty: 'Please enter your username and password.',
-    errLoginFail: 'Incorrect username or password.',
-    errRegisterShortId: 'Username must be at least 2 characters.',
+    errLoginEmpty: 'Please enter your email and password.',
+    errLoginFail: 'Incorrect email or password.',
+    errInvalidEmail: 'Please enter a valid email address.',
     errRegisterShortPw: 'Password must be at least 6 characters.',
     errRegisterPwMismatch: 'Passwords do not match.',
-    errRegisterDupId: 'This username is already taken.',
+    errRegisterDupEmail: 'This email is already registered.',
+    errRegisterGeneric: 'An error occurred during registration.',
+    errLoginGeneric: 'An error occurred during login.',
     logoutConfirm: 'Are you sure you want to log out?'
   }
 };
@@ -117,6 +121,21 @@ let currentLang = localStorage.getItem('layerLang') || 'ko';
 
 function t(key) {
   return (i18n[currentLang] && i18n[currentLang][key]) || i18n.ko[key] || key;
+}
+
+// =============================
+// Supabase 초기화
+// =============================
+
+const SUPABASE_URL = 'https://YOUR_PROJECT_URL.supabase.co';  // TODO: 실제 URL로 교체
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';                     // TODO: 실제 키로 교체
+
+const supabaseClient = (typeof supabase !== 'undefined' && supabase.createClient)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+function isSupabaseReady() {
+  return supabaseClient && SUPABASE_URL !== 'https://YOUR_PROJECT_URL.supabase.co';
 }
 
 // HTML 새니타이저 — DOMPurify가 로드되었으면 사용, 아니면 기본 이스케이프
@@ -158,7 +177,8 @@ const state = {
   activeCategory: null,
   sortOrder: 'newest',
   viewMode: 'card',
-  currentUser: null
+  currentUser: null,
+  currentUserEmail: null
 };
 
 const history = { undoStack: [], redoStack: [], maxSize: 50 };
@@ -561,7 +581,8 @@ function createMemo() {
   };
   state.memos.unshift(memo);
   state.currentMemoId = memo.id;
-  saveMemos();
+  saveMemosLocal();
+  syncMemoToSupabase(memo);
   openMemo(memo.id);
 }
 
@@ -598,7 +619,8 @@ function deleteMemo(memoId, e) {
   e.stopPropagation();
   if (!confirm(t('deleteMemoConfirm'))) return;
   state.memos = state.memos.filter(m => m.id !== memoId);
-  saveMemos();
+  saveMemosLocal();
+  deleteMemoFromSupabase(memoId);
   renderCategories();
   renderMemoList();
 }
@@ -958,12 +980,12 @@ function updateCounts() {
 }
 
 // =============================
-// localStorage
+// localStorage + Supabase 동기화
 // =============================
 
 function memosKey() { return state.currentUser ? 'layerMemos_' + state.currentUser : 'layerMemos'; }
 
-function saveMemos() {
+function saveMemosLocal() {
   try {
     localStorage.setItem(memosKey(), JSON.stringify(state.memos));
   } catch (e) {
@@ -976,16 +998,125 @@ function saveMemos() {
   }
 }
 
-function loadMemos() {
+function loadMemosLocal() {
   try {
     const s = localStorage.getItem(memosKey());
     if (s) state.memos = JSON.parse(s);
     else state.memos = [];
   } catch (e) {
-    // JSON 파싱 실패 시 데이터 손상 — 빈 상태로 시작
     console.error('메모 데이터 복구 불가:', e);
     state.memos = [];
   }
+}
+
+// Supabase에 메모 하나를 upsert
+async function syncMemoToSupabase(memo) {
+  if (!isSupabaseReady() || !state.currentUser) return;
+  try {
+    await supabaseClient.from('memos').upsert({
+      id: memo.id,
+      user_id: state.currentUser,
+      title: memo.title,
+      content: memo.content,
+      category: memo.category || null,
+      layers: memo.layers,
+      active_layer_id: memo.activeLayerId,
+      created_at: memo.createdAt,
+      updated_at: memo.updatedAt
+    });
+  } catch (e) {
+    console.error('Supabase 메모 동기화 실패:', e);
+  }
+}
+
+// Supabase에서 메모 하나 삭제
+async function deleteMemoFromSupabase(memoId) {
+  if (!isSupabaseReady() || !state.currentUser) return;
+  try {
+    await supabaseClient.from('memos').delete().eq('id', memoId).eq('user_id', state.currentUser);
+  } catch (e) {
+    console.error('Supabase 메모 삭제 실패:', e);
+  }
+}
+
+// Supabase에 모든 메모 동기화 (전체 upsert + 삭제된 것 정리)
+async function syncAllMemosToSupabase() {
+  if (!isSupabaseReady() || !state.currentUser) return;
+  try {
+    const rows = state.memos.map(m => ({
+      id: m.id,
+      user_id: state.currentUser,
+      title: m.title,
+      content: m.content,
+      category: m.category || null,
+      layers: m.layers,
+      active_layer_id: m.activeLayerId,
+      created_at: m.createdAt,
+      updated_at: m.updatedAt
+    }));
+    if (rows.length > 0) {
+      await supabaseClient.from('memos').upsert(rows);
+    }
+    // 원격에 있지만 로컬에 없는 메모 삭제
+    const localIds = state.memos.map(m => m.id);
+    const { data: remoteMemos } = await supabaseClient
+      .from('memos')
+      .select('id')
+      .eq('user_id', state.currentUser);
+    if (remoteMemos) {
+      const toDelete = remoteMemos.filter(r => !localIds.includes(r.id)).map(r => r.id);
+      if (toDelete.length > 0) {
+        await supabaseClient.from('memos').delete().in('id', toDelete).eq('user_id', state.currentUser);
+      }
+    }
+  } catch (e) {
+    console.error('Supabase 전체 메모 동기화 실패:', e);
+  }
+}
+
+// Supabase에서 메모 로드
+async function loadMemosFromSupabase() {
+  if (!isSupabaseReady() || !state.currentUser) {
+    loadMemosLocal();
+    return;
+  }
+  try {
+    const { data, error } = await supabaseClient
+      .from('memos')
+      .select('*')
+      .eq('user_id', state.currentUser)
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    state.memos = (data || []).map(row => ({
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      category: row.category,
+      layers: row.layers,
+      activeLayerId: row.active_layer_id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    saveMemosLocal(); // 로컬 캐시 갱신
+  } catch (e) {
+    console.error('Supabase 메모 로드 실패, 로컬 캐시 사용:', e);
+    loadMemosLocal();
+  }
+}
+
+// saveMemos: 로컬 저장 + Supabase 비동기 동기화
+function saveMemos() {
+  saveMemosLocal();
+  // 현재 편집 중인 메모만 Supabase에 upsert (전체 sync 대신)
+  if (state.currentMemoId) {
+    const memo = state.memos.find(m => m.id === state.currentMemoId);
+    if (memo) syncMemoToSupabase(memo);
+  }
+}
+
+// loadMemos: 로컬 캐시에서 빠르게 로드 (Supabase는 onLoginSuccess에서 처리)
+function loadMemos() {
+  loadMemosLocal();
 }
 
 // =============================
@@ -1555,7 +1686,17 @@ editor.addEventListener('input', () => {
 
 function categoriesKey() { return state.currentUser ? 'layerCategories_' + state.currentUser : 'layerCategories'; }
 
-function loadCategories() {
+function saveCategoriesLocal() {
+  try {
+    localStorage.setItem(categoriesKey(), JSON.stringify(state.categories));
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      console.error('저장 공간 부족:', e);
+    }
+  }
+}
+
+function loadCategoriesLocal() {
   try {
     const s = localStorage.getItem(categoriesKey());
     if (s) state.categories = JSON.parse(s);
@@ -1566,14 +1707,63 @@ function loadCategories() {
   }
 }
 
-function saveCategories() {
+async function syncCategoriesToSupabase() {
+  if (!isSupabaseReady() || !state.currentUser) return;
   try {
-    localStorage.setItem(categoriesKey(), JSON.stringify(state.categories));
-  } catch (e) {
-    if (e.name === 'QuotaExceededError' || e.code === 22) {
-      console.error('저장 공간 부족:', e);
+    // 원격 카테고리 가져오기
+    const { data: remoteCats } = await supabaseClient
+      .from('categories')
+      .select('id, name')
+      .eq('user_id', state.currentUser);
+
+    const remoteNames = (remoteCats || []).map(c => c.name);
+    const localNames = state.categories;
+
+    // 로컬에 있고 원격에 없는 것 → insert
+    const toInsert = localNames.filter(n => !remoteNames.includes(n));
+    if (toInsert.length > 0) {
+      await supabaseClient.from('categories').insert(
+        toInsert.map(name => ({ user_id: state.currentUser, name }))
+      );
     }
+
+    // 원격에 있고 로컬에 없는 것 → delete
+    const toDelete = (remoteCats || []).filter(c => !localNames.includes(c.name));
+    if (toDelete.length > 0) {
+      await supabaseClient.from('categories').delete().in('id', toDelete.map(c => c.id));
+    }
+  } catch (e) {
+    console.error('Supabase 카테고리 동기화 실패:', e);
   }
+}
+
+async function loadCategoriesFromSupabase() {
+  if (!isSupabaseReady() || !state.currentUser) {
+    loadCategoriesLocal();
+    return;
+  }
+  try {
+    const { data, error } = await supabaseClient
+      .from('categories')
+      .select('name')
+      .eq('user_id', state.currentUser)
+      .order('id', { ascending: true });
+    if (error) throw error;
+    state.categories = (data || []).map(row => row.name);
+    saveCategoriesLocal(); // 로컬 캐시 갱신
+  } catch (e) {
+    console.error('Supabase 카테고리 로드 실패, 로컬 캐시 사용:', e);
+    loadCategoriesLocal();
+  }
+}
+
+function saveCategories() {
+  saveCategoriesLocal();
+  syncCategoriesToSupabase();
+}
+
+function loadCategories() {
+  loadCategoriesLocal();
 }
 
 function renderCategories() {
@@ -1617,8 +1807,10 @@ function deleteCategory(cat) {
   if (!confirm(t('deleteCategoryConfirm'))) return;
   state.categories = state.categories.filter(c => c !== cat);
   // 해당 카테고리의 메모는 미분류로 변경
-  state.memos.forEach(m => { if (m.category === cat) m.category = null; });
-  saveMemos();
+  const affectedMemos = state.memos.filter(m => m.category === cat);
+  affectedMemos.forEach(m => { m.category = null; });
+  saveMemosLocal();
+  affectedMemos.forEach(m => syncMemoToSupabase(m));
   saveCategories();
   if (state.activeCategory === cat) state.activeCategory = null;
   renderCategories();
@@ -1818,83 +2010,8 @@ document.addEventListener('mousedown', e => {
 });
 
 // =============================
-// 인증 (로그인 / 회원가입)
+// 인증 (Supabase Auth)
 // =============================
-
-// PBKDF2 기반 패스워드 해싱 (사용자별 랜덤 salt)
-function generateSalt() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function hashPasswordWithSalt(password, salt) {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']
-  );
-  const derivedBits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: encoder.encode(salt), iterations: 100000, hash: 'SHA-256' },
-    keyMaterial, 256
-  );
-  const hashArray = Array.from(new Uint8Array(derivedBits));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// 레거시 SHA-256 해싱 (기존 사용자 마이그레이션용)
-async function hashPasswordLegacy(password) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'laywri-salt-v1');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function loadUsers() {
-  try {
-    const s = localStorage.getItem('layerUsers');
-    return s ? JSON.parse(s) : [];
-  } catch (e) {
-    console.error('사용자 데이터 손상:', e);
-    return [];
-  }
-}
-
-function saveUsers(users) {
-  localStorage.setItem('layerUsers', JSON.stringify(users));
-}
-
-function getSession() {
-  try {
-    const s = localStorage.getItem('layerSession');
-    if (!s) return null;
-    const session = JSON.parse(s);
-    if (session.expiresAt < Date.now()) {
-      localStorage.removeItem('layerSession');
-      return null;
-    }
-    return session;
-  } catch (e) {
-    localStorage.removeItem('layerSession');
-    return null;
-  }
-}
-
-function createSession(username) {
-  const tokenBytes = new Uint8Array(32);
-  crypto.getRandomValues(tokenBytes);
-  const token = Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  const session = {
-    username,
-    token,
-    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7일
-  };
-  localStorage.setItem('layerSession', JSON.stringify(session));
-}
-
-function clearSession() {
-  localStorage.removeItem('layerSession');
-}
 
 function showLoginScreen() {
   document.getElementById('loginScreen').classList.remove('hidden');
@@ -1904,15 +2021,18 @@ function showLoginScreen() {
 
 function updateUserDisplay() {
   const el = document.getElementById('currentUser');
-  if (el) el.textContent = state.currentUser || '';
+  if (el) el.textContent = state.currentUserEmail || '';
 }
 
-function onLoginSuccess(username) {
-  state.currentUser = username;
+async function onLoginSuccess(user) {
+  state.currentUser = user.id;
+  state.currentUserEmail = user.email;
   state.memos = [];
   state.categories = [];
-  loadMemos();
-  loadCategories();
+  await loadMemosFromSupabase();
+  await loadCategoriesFromSupabase();
+  // 기존 localStorage 데이터 마이그레이션 시도
+  await migrateLocalData();
   document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
   updateUILanguage();
   document.getElementById('loginScreen').classList.add('hidden');
@@ -1920,10 +2040,74 @@ function onLoginSuccess(username) {
   updateUserDisplay();
 }
 
-function logout() {
+// 기존 localStorage의 사용자 데이터를 Supabase로 마이그레이션
+async function migrateLocalData() {
+  if (!isSupabaseReady() || !state.currentUser) return;
+
+  // 이미 Supabase에 데이터가 있으면 마이그레이션 불필요
+  if (state.memos.length > 0) return;
+
+  // localStorage에서 기존 사용자 데이터 검색
+  // 가능한 키: layerMemos_username, layerMemos (fallback)
+  const keysToTry = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('layerMemos')) {
+      keysToTry.push(key);
+    }
+  }
+
+  let migratedMemos = [];
+  let migratedCategories = [];
+  let sourceKey = null;
+
+  for (const key of keysToTry) {
+    try {
+      const data = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(data) && data.length > 0 && data[0].id) {
+        migratedMemos = data;
+        sourceKey = key;
+        // 대응하는 카테고리 키 시도
+        const catKey = key.replace('layerMemos', 'layerCategories');
+        try {
+          const cats = JSON.parse(localStorage.getItem(catKey));
+          if (Array.isArray(cats)) migratedCategories = cats;
+        } catch (_) {}
+        break;
+      }
+    } catch (_) {}
+  }
+
+  if (migratedMemos.length === 0) return;
+
+  const doMigrate = confirm(
+    currentLang === 'ko'
+      ? `기존 로컬 데이터 ${migratedMemos.length}개의 메모가 발견되었습니다.\nSupabase로 가져올까요?`
+      : `Found ${migratedMemos.length} memos in local storage.\nImport to Supabase?`
+  );
+
+  if (!doMigrate) return;
+
+  // 메모 마이그레이션
+  state.memos = migratedMemos;
+  saveMemosLocal();
+  await syncAllMemosToSupabase();
+
+  // 카테고리 마이그레이션
+  if (migratedCategories.length > 0) {
+    state.categories = migratedCategories;
+    saveCategoriesLocal();
+    await syncCategoriesToSupabase();
+  }
+}
+
+async function logout() {
   if (!confirm(t('logoutConfirm'))) return;
-  clearSession();
+  if (isSupabaseReady()) {
+    await supabaseClient.auth.signOut();
+  }
   state.currentUser = null;
+  state.currentUserEmail = null;
   state.memos = [];
   state.categories = [];
   showLoginScreen();
@@ -1932,62 +2116,48 @@ function logout() {
 // 로그인 폼 제출
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const username = document.getElementById('loginUsername').value.trim();
+  const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
   const errorEl = document.getElementById('loginError');
 
-  if (!username || !password) {
+  if (!email || !password) {
     errorEl.textContent = t('errLoginEmpty');
     errorEl.classList.remove('hidden');
     return;
   }
 
-  const users = loadUsers();
-  let user = null;
-
-  // PBKDF2 해싱된 사용자 확인
-  const pbkdf2User = users.find(u => u.username === username && u.salt);
-  if (pbkdf2User) {
-    const hash = await hashPasswordWithSalt(password, pbkdf2User.salt);
-    if (pbkdf2User.passwordHash === hash) user = pbkdf2User;
+  if (!isSupabaseReady()) {
+    errorEl.textContent = 'Supabase가 설정되지 않았습니다.';
+    errorEl.classList.remove('hidden');
+    return;
   }
 
-  // 레거시(SHA-256) 사용자 확인 및 자동 마이그레이션
-  if (!user) {
-    const legacyHash = await hashPasswordLegacy(password);
-    const legacyUser = users.find(u => u.username === username && u.passwordHash === legacyHash && !u.salt);
-    if (legacyUser) {
-      user = legacyUser;
-      // PBKDF2로 자동 마이그레이션
-      const newSalt = generateSalt();
-      const newHash = await hashPasswordWithSalt(password, newSalt);
-      user.salt = newSalt;
-      user.passwordHash = newHash;
-      saveUsers(users);
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    if (error.message.includes('Invalid login')) {
+      errorEl.textContent = t('errLoginFail');
+    } else {
+      errorEl.textContent = t('errLoginGeneric');
     }
-  }
-
-  if (!user) {
-    errorEl.textContent = t('errLoginFail');
     errorEl.classList.remove('hidden');
     return;
   }
 
   errorEl.classList.add('hidden');
-  createSession(username);
-  onLoginSuccess(username);
+  await onLoginSuccess(data.user);
 });
 
 // 회원가입 폼 제출
 document.getElementById('registerForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const username = document.getElementById('registerUsername').value.trim();
+  const email = document.getElementById('registerEmail').value.trim();
   const password = document.getElementById('registerPassword').value;
-  const confirm = document.getElementById('registerPasswordConfirm').value;
+  const confirmPw = document.getElementById('registerPasswordConfirm').value;
   const errorEl = document.getElementById('registerError');
 
-  if (!username || username.length < 2) {
-    errorEl.textContent = t('errRegisterShortId');
+  if (!email) {
+    errorEl.textContent = t('errInvalidEmail');
     errorEl.classList.remove('hidden');
     return;
   }
@@ -1996,27 +2166,42 @@ document.getElementById('registerForm').addEventListener('submit', async e => {
     errorEl.classList.remove('hidden');
     return;
   }
-  if (password !== confirm) {
+  if (password !== confirmPw) {
     errorEl.textContent = t('errRegisterPwMismatch');
     errorEl.classList.remove('hidden');
     return;
   }
 
-  const users = loadUsers();
-  if (users.find(u => u.username === username)) {
-    errorEl.textContent = t('errRegisterDupId');
+  if (!isSupabaseReady()) {
+    errorEl.textContent = 'Supabase가 설정되지 않았습니다.';
     errorEl.classList.remove('hidden');
     return;
   }
 
-  const salt = generateSalt();
-  const hash = await hashPasswordWithSalt(password, salt);
-  users.push({ username, passwordHash: hash, salt, createdAt: Date.now() });
-  saveUsers(users);
+  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+
+  if (error) {
+    if (error.message.includes('already registered')) {
+      errorEl.textContent = t('errRegisterDupEmail');
+    } else {
+      errorEl.textContent = t('errRegisterGeneric');
+    }
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  // Supabase가 이메일 확인을 요구하는 경우
+  if (data.user && !data.session) {
+    errorEl.textContent = currentLang === 'ko'
+      ? '인증 이메일을 발송했습니다. 이메일을 확인해주세요.'
+      : 'Verification email sent. Please check your inbox.';
+    errorEl.classList.remove('hidden');
+    errorEl.style.color = '#34d399';
+    return;
+  }
 
   errorEl.classList.add('hidden');
-  createSession(username);
-  onLoginSuccess(username);
+  await onLoginSuccess(data.user);
 });
 
 // 로그인 ↔ 회원가입 전환
@@ -2041,16 +2226,27 @@ document.getElementById('logoutBtn').addEventListener('click', logout);
 
 document.documentElement.lang = currentLang === 'ko' ? 'ko' : 'en';
 
-(function initAuth() {
-  const session = getSession();
-  if (session) {
-    state.currentUser = session.username;
-    loadMemos();
-    loadCategories();
-    updateUILanguage();
-    showListScreen();
-    updateUserDisplay();
+(async function initAuth() {
+  if (!isSupabaseReady()) {
+    showLoginScreen();
+    return;
+  }
+
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session && session.user) {
+    await onLoginSuccess(session.user);
   } else {
     showLoginScreen();
   }
+
+  // 인증 상태 변화 감지 (다른 탭에서 로그아웃 등)
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_OUT') {
+      state.currentUser = null;
+      state.currentUserEmail = null;
+      state.memos = [];
+      state.categories = [];
+      showLoginScreen();
+    }
+  });
 })();
